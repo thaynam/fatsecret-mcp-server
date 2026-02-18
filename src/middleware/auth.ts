@@ -6,12 +6,7 @@
 
 import { createMiddleware } from "hono/factory";
 import { getSession } from "../lib/token-storage.js";
-import type { SessionData } from "../lib/schemas.js";
-
-interface Variables {
-	sessionToken: string;
-	sessionData: SessionData;
-}
+import type { Variables } from "../app.js";
 
 /**
  * Bearer token authentication middleware

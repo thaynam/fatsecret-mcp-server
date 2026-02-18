@@ -22,7 +22,7 @@
 			"recommended": true,
 			"style": {
 				"noInferrableTypes": "error",
-				"noNonNullAssertion": "off",
+				"noNonNullAssertion": "warn",
 				"noParameterAssign": "error",
 				"noUnusedTemplateLiteral": "error",
 				"noUselessElse": "error",
@@ -35,12 +35,12 @@
 			},
 			"suspicious": {
 				"noConfusingVoidType": "off",
-				"noDebugger": "off",
-				"noExplicitAny": "off"
+				"noDebugger": "error",
+				"noExplicitAny": "warn"
 			}
 		}
 	},
-	"root": false,
+	"root": true,
 	"vcs": {
 		"clientKind": "git",
 		"enabled": true,

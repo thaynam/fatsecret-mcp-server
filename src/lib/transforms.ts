@@ -10,48 +10,19 @@
  * @returns Number of days since 1970-01-01 as a string
  */
 export function dateToFatSecretFormat(dateString?: string): string {
-	const date = dateString ? new Date(dateString) : new Date();
-	const epochStart = new Date("1970-01-01");
-	const daysSinceEpoch = Math.floor(
-		(date.getTime() - epochStart.getTime()) / (1000 * 60 * 60 * 24),
-	);
-	return daysSinceEpoch.toString();
-}
+	const MS_PER_DAY = 1000 * 60 * 60 * 24;
+	let utcMs: number;
 
-/**
- * Convert FatSecret's "days since epoch" format back to YYYY-MM-DD
- *
- * @param daysSinceEpoch Number of days since 1970-01-01
- * @returns Date string in YYYY-MM-DD format
- */
-export function fatSecretFormatToDate(daysSinceEpoch: number): string {
-	const date = new Date(daysSinceEpoch * 24 * 60 * 60 * 1000);
-	return date.toISOString().split("T")[0];
-}
-
-/**
- * Clean a value - converts null/undefined/empty string to undefined
- */
-export function cleanValue<T>(value: T | null | undefined): T | undefined {
-	if (value === null || value === undefined || value === "") {
-		return undefined;
+	if (dateString) {
+		// Parse as UTC to avoid timezone offset issues
+		utcMs = new Date(`${dateString}T00:00:00Z`).getTime();
+	} else {
+		// "Today" in UTC
+		const now = new Date();
+		utcMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 	}
-	return value;
-}
 
-/**
- * Remove undefined values from an object
- */
-export function removeUndefined<T extends Record<string, unknown>>(
-	obj: T,
-): Partial<T> {
-	const result: Partial<T> = {};
-	for (const [key, value] of Object.entries(obj)) {
-		if (value !== undefined) {
-			(result as Record<string, unknown>)[key] = value;
-		}
-	}
-	return result;
+	return Math.floor(utcMs / MS_PER_DAY).toString();
 }
 
 /**
@@ -77,6 +48,13 @@ export function escapeHtml(str: string): string {
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#39;");
+}
+
+/**
+ * Extract the session token from the fatsecret_session cookie
+ */
+export function getSessionCookie(cookieHeader?: string): string | undefined {
+	return cookieHeader?.match(/fatsecret_session=([^;]+)/)?.[1];
 }
 
 /**

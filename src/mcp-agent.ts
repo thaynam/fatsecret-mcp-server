@@ -10,6 +10,7 @@ import { z } from "zod";
 import { FatSecretClient } from "./lib/client.js";
 import { handleError } from "./lib/errors.js";
 import { getSession } from "./lib/token-storage.js";
+import { APP_VERSION } from "./app.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: FatSecret API responses have dynamic shapes
 type ApiResponse = Record<string, any>;
@@ -24,7 +25,7 @@ export interface Props extends Record<string, unknown> {
 export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({
 		name: "FatSecret API",
-		version: "0.2.0",
+		version: APP_VERSION,
 	});
 
 	private client!: FatSecretClient;
@@ -77,17 +78,20 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// FOOD DATABASE TOOLS
 		// ============================================
 
-		this.server.tool(
+		this.server.registerTool(
 			"search_foods",
 			{
-				searchExpression: z
-					.string()
-					.describe('Search term for foods (e.g., "chicken breast", "apple")'),
-				pageNumber: z.number().optional().describe("Page number (default: 0)"),
-				maxResults: z
-					.number()
-					.optional()
-					.describe("Max results per page (default: 20, max: 50)"),
+				description: "Search for foods in the FatSecret nutrition database",
+				inputSchema: {
+					searchExpression: z
+						.string()
+						.describe('Search term for foods (e.g., "chicken breast", "apple")'),
+					pageNumber: z.number().optional().describe("Page number (default: 0)"),
+					maxResults: z
+						.number()
+						.optional()
+						.describe("Max results per page (default: 20, max: 50)"),
+				},
 			},
 			async ({ searchExpression, pageNumber, maxResults }) => {
 				try {
@@ -102,11 +106,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return {
 						content: [
 							{
-								type: "text",
+								type: "text" as const,
 								text: `Found ${totalResults} foods matching "${searchExpression}"`,
 							},
 							{
-								type: "text",
+								type: "text" as const,
 								text: JSON.stringify(response, null, 2),
 							},
 						],
@@ -117,10 +121,13 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
-		this.server.tool(
+		this.server.registerTool(
 			"get_food",
 			{
-				foodId: z.string().describe("The FatSecret food ID"),
+				description: "Get detailed nutritional information for a specific food",
+				inputSchema: {
+					foodId: z.string().describe("The FatSecret food ID"),
+				},
 			},
 			async ({ foodId }) => {
 				try {
@@ -132,11 +139,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return {
 						content: [
 							{
-								type: "text",
+								type: "text" as const,
 								text: `Food: ${foodName}`,
 							},
 							{
-								type: "text",
+								type: "text" as const,
 								text: JSON.stringify(response, null, 2),
 							},
 						],
@@ -151,15 +158,18 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// RECIPE DATABASE TOOLS
 		// ============================================
 
-		this.server.tool(
+		this.server.registerTool(
 			"search_recipes",
 			{
-				searchExpression: z.string().describe("Search term for recipes"),
-				pageNumber: z.number().optional().describe("Page number (default: 0)"),
-				maxResults: z
-					.number()
-					.optional()
-					.describe("Max results per page (default: 20, max: 50)"),
+				description: "Search for recipes in the FatSecret database",
+				inputSchema: {
+					searchExpression: z.string().describe("Search term for recipes"),
+					pageNumber: z.number().optional().describe("Page number (default: 0)"),
+					maxResults: z
+						.number()
+						.optional()
+						.describe("Max results per page (default: 20, max: 50)"),
+				},
 			},
 			async ({ searchExpression, pageNumber, maxResults }) => {
 				try {
@@ -174,11 +184,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return {
 						content: [
 							{
-								type: "text",
+								type: "text" as const,
 								text: `Found ${totalResults} recipes matching "${searchExpression}"`,
 							},
 							{
-								type: "text",
+								type: "text" as const,
 								text: JSON.stringify(response, null, 2),
 							},
 						],
@@ -189,10 +199,13 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
-		this.server.tool(
+		this.server.registerTool(
 			"get_recipe",
 			{
-				recipeId: z.string().describe("The FatSecret recipe ID"),
+				description: "Get detailed information about a specific recipe",
+				inputSchema: {
+					recipeId: z.string().describe("The FatSecret recipe ID"),
+				},
 			},
 			async ({ recipeId }) => {
 				try {
@@ -206,11 +219,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return {
 						content: [
 							{
-								type: "text",
+								type: "text" as const,
 								text: `Recipe: ${recipeName}`,
 							},
 							{
-								type: "text",
+								type: "text" as const,
 								text: JSON.stringify(response, null, 2),
 							},
 						],
@@ -225,34 +238,43 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// USER DATA TOOLS (Require OAuth)
 		// ============================================
 
-		this.server.tool("get_user_profile", {}, async () => {
-			try {
-				const response = await this.client.getUserProfile();
+		this.server.registerTool(
+			"get_user_profile",
+			{
+				description: "Get the authenticated user's FatSecret profile",
+			},
+			async () => {
+				try {
+					const response = await this.client.getUserProfile();
 
-				return {
-					content: [
-						{
-							type: "text",
-							text: "User Profile",
-						},
-						{
-							type: "text",
-							text: JSON.stringify(response, null, 2),
-						},
-					],
-				};
-			} catch (error) {
-				return handleError(error);
-			}
-		});
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: "User Profile",
+							},
+							{
+								type: "text" as const,
+								text: JSON.stringify(response, null, 2),
+							},
+						],
+					};
+				} catch (error) {
+					return handleError(error);
+				}
+			},
+		);
 
-		this.server.tool(
+		this.server.registerTool(
 			"get_user_food_entries",
 			{
-				date: z
-					.string()
-					.optional()
-					.describe("Date in YYYY-MM-DD format (default: today)"),
+				description: "Get food diary entries for a specific date",
+				inputSchema: {
+					date: z
+						.string()
+						.optional()
+						.describe("Date in YYYY-MM-DD format (default: today)"),
+				},
 			},
 			async ({ date }) => {
 				try {
@@ -270,11 +292,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return {
 						content: [
 							{
-								type: "text",
+								type: "text" as const,
 								text: `Found ${entryCount} food entries for ${date || "today"}`,
 							},
 							{
-								type: "text",
+								type: "text" as const,
 								text: JSON.stringify(response, null, 2),
 							},
 						],
@@ -285,19 +307,22 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
-		this.server.tool(
+		this.server.registerTool(
 			"add_food_entry",
 			{
-				foodId: z.string().describe("The FatSecret food ID"),
-				servingId: z.string().describe("The serving ID for the food"),
-				quantity: z.number().describe("Quantity of the serving"),
-				mealType: z
-					.enum(["breakfast", "lunch", "dinner", "snack"])
-					.describe("Meal type"),
-				date: z
-					.string()
-					.optional()
-					.describe("Date in YYYY-MM-DD format (default: today)"),
+				description: "Add a food entry to the user's food diary",
+				inputSchema: {
+					foodId: z.string().describe("The FatSecret food ID"),
+					servingId: z.string().describe("The serving ID for the food"),
+					quantity: z.number().describe("Quantity of the serving"),
+					mealType: z
+						.enum(["breakfast", "lunch", "dinner", "snack"])
+						.describe("Meal type"),
+					date: z
+						.string()
+						.optional()
+						.describe("Date in YYYY-MM-DD format (default: today)"),
+				},
 			},
 			async ({ foodId, servingId, quantity, mealType, date }) => {
 				try {
@@ -312,11 +337,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return {
 						content: [
 							{
-								type: "text",
-								text: `Food entry added successfully!`,
+								type: "text" as const,
+								text: "Food entry added successfully!",
 							},
 							{
-								type: "text",
+								type: "text" as const,
 								text: JSON.stringify(response, null, 2),
 							},
 						],
@@ -327,15 +352,18 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
-		this.server.tool(
+		this.server.registerTool(
 			"get_weight_month",
 			{
-				date: z
-					.string()
-					.optional()
-					.describe(
-						"Date in YYYY-MM-DD format to specify the month (default: current month)",
-					),
+				description: "Get weight entries for a specific month",
+				inputSchema: {
+					date: z
+						.string()
+						.optional()
+						.describe(
+							"Date in YYYY-MM-DD format to specify the month (default: current month)",
+						),
+				},
 			},
 			async ({ date }) => {
 				try {
@@ -353,11 +381,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 					return {
 						content: [
 							{
-								type: "text",
+								type: "text" as const,
 								text: `Found ${entryCount} weight entries`,
 							},
 							{
-								type: "text",
+								type: "text" as const,
 								text: JSON.stringify(response, null, 2),
 							},
 						],
@@ -372,15 +400,21 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 		// AUTH STATUS TOOL
 		// ============================================
 
-		this.server.tool("check_auth_status", {}, async () => {
-			return {
-				content: [
-					{
-						type: "text",
-						text: `Authentication Status: Fully authenticated\n\nYou can use all FatSecret API tools.`,
-					},
-				],
-			};
-		});
+		this.server.registerTool(
+			"check_auth_status",
+			{
+				description: "Check current authentication status",
+			},
+			async () => {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: "Authentication Status: Fully authenticated\n\nYou can use all FatSecret API tools.",
+						},
+					],
+				};
+			},
+		);
 	}
 }

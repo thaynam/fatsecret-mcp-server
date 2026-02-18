@@ -18,7 +18,6 @@
 		"dev": "wrangler dev --env dev --port 8787",
 		"format": "biome format --write",
 		"lint:fix": "biome lint --fix",
-		"start": "wrangler dev --env dev --port 8787",
 		"cf-typegen": "wrangler types",
 		"type-check": "tsc --noEmit",
 		"test": "vitest",
@@ -38,7 +37,6 @@
 		"@cloudflare/workers-types": "^4.20251011.0",
 		"@types/node": "^24.7.2",
 		"@vitest/ui": "^3.2.4",
-		"ai": "^6.0.77",
 		"typescript": "5.9.3",
 		"vitest": "^3.2.4",
 		"wrangler": "^4.45.0"

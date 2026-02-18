@@ -14,6 +14,9 @@ import {
 	mockOAuth2Error,
 } from "../setup.js";
 
+// biome-ignore lint/suspicious/noExplicitAny: Test assertions on dynamic API responses
+type AnyResponse = Record<string, any>;
+
 describe("FatSecretClient", () => {
 	const clientConfig = {
 		clientId: "test_client_id",
@@ -103,7 +106,7 @@ describe("FatSecretClient", () => {
 				};
 				mockOAuth2Flow(mockResponse);
 
-				const response = await client.searchFoods("chicken", 0, 20);
+				const response = (await client.searchFoods("chicken", 0, 20)) as AnyResponse;
 
 				expect(response.foods.food).toHaveLength(2);
 				expect(response.foods.food[0].food_name).toBe("Chicken Breast");
@@ -136,7 +139,7 @@ describe("FatSecretClient", () => {
 				};
 				mockOAuth2Flow(mockResponse);
 
-				const response = await client.getFood("123");
+				const response = (await client.getFood("123")) as AnyResponse;
 
 				expect(response.food.food_id).toBe("123");
 				expect(response.food.food_name).toBe("Apple");
@@ -155,7 +158,7 @@ describe("FatSecretClient", () => {
 				};
 				mockOAuth2Flow(mockResponse);
 
-				const response = await client.searchRecipes("salad", 0, 20);
+				const response = (await client.searchRecipes("salad", 0, 20)) as AnyResponse;
 
 				expect(response.recipes.recipe).toHaveLength(1);
 				expect(response.recipes.recipe[0].recipe_name).toBe("Chicken Salad");
@@ -173,7 +176,7 @@ describe("FatSecretClient", () => {
 				};
 				mockOAuth2Flow(mockResponse);
 
-				const response = await client.getRecipe("789");
+				const response = (await client.getRecipe("789")) as AnyResponse;
 
 				expect(response.recipe.recipe_id).toBe("789");
 			});
@@ -192,7 +195,7 @@ describe("FatSecretClient", () => {
 				};
 				mockFetchSuccess(mockResponse);
 
-				const response = await client.getUserProfile();
+				const response = (await client.getUserProfile()) as AnyResponse;
 
 				expect(response.profile.user_id).toBe("12345");
 			});
@@ -209,7 +212,7 @@ describe("FatSecretClient", () => {
 				};
 				mockFetchSuccess(mockResponse);
 
-				const response = await client.getFoodEntries("2024-01-15");
+				const response = (await client.getFoodEntries("2024-01-15")) as AnyResponse;
 
 				expect(response.food_entries.food_entry).toHaveLength(1);
 			});
@@ -222,13 +225,13 @@ describe("FatSecretClient", () => {
 				};
 				mockFetchSuccess(mockResponse);
 
-				const response = await client.addFoodEntry(
+				const response = (await client.addFoodEntry(
 					"food_123",
 					"serving_456",
 					1.5,
 					"breakfast",
 					"2024-01-15",
-				);
+				)) as AnyResponse;
 
 				expect(response.food_entry_id.value).toBe("new_entry_123");
 			});
@@ -256,7 +259,7 @@ describe("FatSecretClient", () => {
 				};
 				mockFetchSuccess(mockResponse);
 
-				const response = await client.getWeightMonth("2024-01-15");
+				const response = (await client.getWeightMonth("2024-01-15")) as AnyResponse;
 
 				expect(response.month.day).toHaveLength(2);
 			});

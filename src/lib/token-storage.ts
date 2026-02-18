@@ -62,7 +62,7 @@ export async function encryptData(
 	combined.set(iv, 0);
 	combined.set(new Uint8Array(encrypted), iv.length);
 
-	return btoa(String.fromCharCode(...combined));
+	return btoa(Array.from(combined, (b) => String.fromCharCode(b)).join(""));
 }
 
 /**
@@ -220,12 +220,12 @@ export async function getOAuthState(
 		return null;
 	}
 
-	// Delete the state immediately (single use)
-	await kv.delete(kvKey);
-
 	try {
 		const decrypted = await decryptData(encrypted, encryptionKey);
-		return JSON.parse(decrypted) as OAuthState;
+		const state = JSON.parse(decrypted) as OAuthState;
+		// Delete only after successful decryption (single use)
+		await kv.delete(kvKey);
+		return state;
 	} catch {
 		console.error("Failed to decrypt OAuth state");
 		return null;

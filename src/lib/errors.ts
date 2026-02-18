@@ -31,16 +31,6 @@ export class FatSecretApiError extends Error {
 }
 
 /**
- * Custom error class for validation errors
- */
-export class ValidationError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "ValidationError";
-	}
-}
-
-/**
  * HTTP status code to user-friendly message mapping
  */
 const STATUS_CODE_MESSAGES: Record<number, string> = {
@@ -64,9 +54,7 @@ function getStatusMessage(status: number): string {
 /**
  * Format a FatSecret API error into a user-friendly MCP tool response
  */
-export function formatFatSecretApiError(
-	error: FatSecretApiError,
-): McpToolResponse {
+function formatFatSecretApiError(error: FatSecretApiError): McpToolResponse {
 	const statusMessage = getStatusMessage(error.status);
 	const parts: string[] = [];
 
@@ -164,7 +152,7 @@ export function formatFatSecretApiError(
 /**
  * Format a Zod validation error into a user-friendly MCP tool response
  */
-export function formatValidationError(error: ZodError): McpToolResponse {
+function formatValidationError(error: ZodError): McpToolResponse {
 	const parts: string[] = [];
 
 	parts.push("Error: Schema Validation Failed");
@@ -215,58 +203,6 @@ export function formatValidationError(error: ZodError): McpToolResponse {
 }
 
 /**
- * Format a custom validation error into a user-friendly MCP tool response
- */
-export function formatValidationErrorMessage(
-	error: ValidationError,
-): McpToolResponse {
-	const parts: string[] = [];
-
-	parts.push("Error: Validation Failed");
-	parts.push("");
-	parts.push("**What went wrong:**");
-	parts.push(error.message);
-	parts.push("");
-
-	const message = error.message.toLowerCase();
-
-	parts.push("**How to fix:**");
-
-	// Date errors
-	if (message.includes("date")) {
-		parts.push("  - Use YYYY-MM-DD format for dates");
-		parts.push("  - Example: 2024-01-15");
-	}
-	// Authentication errors
-	else if (
-		message.includes("credentials") ||
-		message.includes("authentication")
-	) {
-		parts.push("  - Set your FatSecret API credentials first");
-		parts.push("  - Complete the OAuth flow for user-specific features");
-	}
-	// Meal type errors
-	else if (message.includes("meal")) {
-		parts.push("  - Use one of: breakfast, lunch, dinner, snack");
-	}
-	// Generic advice
-	else {
-		parts.push("  - Review the error message for specific details");
-		parts.push("  - Check that all values match expected formats");
-	}
-
-	return {
-		content: [
-			{
-				type: "text",
-				text: parts.join("\n"),
-			},
-		],
-		isError: true,
-	};
-}
-
-/**
  * Central error handler that routes errors to appropriate formatters
  */
 export function handleError(error: unknown): McpToolResponse {
@@ -278,11 +214,6 @@ export function handleError(error: unknown): McpToolResponse {
 	// Handle Zod validation errors
 	if (error instanceof ZodError) {
 		return formatValidationError(error);
-	}
-
-	// Handle custom validation errors
-	if (error instanceof ValidationError) {
-		return formatValidationErrorMessage(error);
 	}
 
 	// Handle generic errors

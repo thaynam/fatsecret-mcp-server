@@ -5,14 +5,16 @@
  */
 
 import { Hono } from "hono";
+import { APP_VERSION } from "../app.js";
 import { FatSecretClient } from "../lib/client.js";
 import {
 	getSession,
 	storeSession,
+	deleteSession,
 	generateSessionToken,
 	maskSecret,
 } from "../lib/token-storage.js";
-import { escapeHtml } from "../lib/transforms.js";
+import { escapeHtml, getSessionCookie } from "../lib/transforms.js";
 import type { SessionData } from "../lib/schemas.js";
 
 const utilityRoutes = new Hono<{ Bindings: Env }>();
@@ -24,7 +26,7 @@ utilityRoutes.get("/health", (c) => {
 	return c.json({
 		status: "healthy",
 		service: "fatsecret-mcp-server",
-		version: "0.2.0",
+		version: APP_VERSION,
 		timestamp: new Date().toISOString(),
 	});
 });
@@ -92,8 +94,7 @@ utilityRoutes.get("/", (c) => {
  * GET /setup - Setup page
  */
 utilityRoutes.get("/setup", async (c) => {
-	const sessionCookie = c.req.header("Cookie");
-	const sessionToken = sessionCookie?.match(/fatsecret_session=([^;]+)/)?.[1];
+	const sessionToken = getSessionCookie(c.req.header("Cookie"));
 
 	// Get query params for error/success messages
 	const url = new URL(c.req.url);
@@ -365,10 +366,8 @@ utilityRoutes.post("/api/save-credentials", async (c) => {
  * DELETE /api/delete-credentials
  */
 utilityRoutes.delete("/api/delete-credentials", async (c) => {
-	const sessionToken = c.req
-		.header("Cookie")
-		?.match(/fatsecret_session=([^;]+)/)?.[1];
-	if (sessionToken) await c.env.OAUTH_KV.delete(`session:${sessionToken}`);
+	const sessionToken = getSessionCookie(c.req.header("Cookie"));
+	if (sessionToken) await deleteSession(c.env.OAUTH_KV, sessionToken);
 	const response = c.json({ success: true });
 	response.headers.set("Set-Cookie", "fatsecret_session=; Path=/; Max-Age=0");
 	return response;

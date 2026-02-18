@@ -17,7 +17,7 @@ import {
 	getOAuthState,
 	generateSessionToken,
 } from "../lib/token-storage.js";
-import { escapeHtml } from "../lib/transforms.js";
+import { escapeHtml, getSessionCookie } from "../lib/transforms.js";
 import type { SessionData, OAuthState } from "../lib/schemas.js";
 
 const oauthRoutes = new Hono<{ Bindings: Env }>();
@@ -34,8 +34,7 @@ const oauthRoutes = new Hono<{ Bindings: Env }>();
 oauthRoutes.get("/oauth/connect", async (c) => {
 	try {
 		// Get session token from cookie
-		const sessionCookie = c.req.header("Cookie");
-		const sessionToken = sessionCookie?.match(/fatsecret_session=([^;]+)/)?.[1];
+		const sessionToken = getSessionCookie(c.req.header("Cookie"));
 
 		if (!sessionToken) {
 			return c.redirect("/setup?error=no_session");
@@ -113,8 +112,7 @@ oauthRoutes.get("/oauth/connect", async (c) => {
 oauthRoutes.get("/oauth/connect-account", async (c) => {
 	try {
 		// Get session token from cookie
-		const sessionCookie = c.req.header("Cookie");
-		const sessionToken = sessionCookie?.match(/fatsecret_session=([^;]+)/)?.[1];
+		const sessionToken = getSessionCookie(c.req.header("Cookie"));
 
 		if (!sessionToken) {
 			return c.redirect("/setup?error=no_session");

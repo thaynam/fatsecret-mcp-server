@@ -3,6 +3,8 @@
  */
 
 import { Hono } from "hono";
+
+export const APP_VERSION = "0.2.0";
 import oauth2Routes from "./routes/oauth2.js";
 import oauthRoutes from "./routes/oauth.js";
 import { createMcpRoutes } from "./routes/mcp.js";

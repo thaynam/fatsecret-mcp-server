@@ -16,7 +16,7 @@ import {
 	getSession,
 	maskSecret,
 } from "../lib/token-storage.js";
-import { escapeHtml } from "../lib/transforms.js";
+import { escapeHtml, getSessionCookie } from "../lib/transforms.js";
 import {
 	storeOAuth2Client,
 	getOAuth2Client,
@@ -385,8 +385,7 @@ oauth2Routes.get("/oauth2/authorize", async (c) => {
 	}
 
 	// Check for existing session
-	const sessionCookie = c.req.header("Cookie");
-	const sessionToken = sessionCookie?.match(/fatsecret_session=([^;]+)/)?.[1];
+	const sessionToken = getSessionCookie(c.req.header("Cookie"));
 	let session: SessionData | null = null;
 	if (sessionToken) {
 		session = await getSession(
@@ -450,8 +449,7 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 
 	// Handle consent (existing session)
 	if (action === "allow") {
-		const sessionCookie = c.req.header("Cookie");
-		const sessionToken = sessionCookie?.match(/fatsecret_session=([^;]+)/)?.[1];
+		const sessionToken = getSessionCookie(c.req.header("Cookie"));
 
 		if (!sessionToken) {
 			return c.html(

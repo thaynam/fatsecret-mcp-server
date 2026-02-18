@@ -157,68 +157,10 @@ export class FatSecretClient {
 	}
 
 	/**
-	 * Make an OAuth request for OAuth endpoints
-	 * Uses oauth-1.0a library directly for signing
+	 * Core OAuth 1.0a signed request.
+	 * Signs the request using the oauth-1.0a library, then dispatches it.
 	 */
-	private async oauthRequest(
-		method: "GET" | "POST",
-		url: string,
-		additionalOAuthParams: Record<string, string> = {},
-		token?: string,
-		tokenSecret?: string,
-	): Promise<unknown> {
-		const requestData = {
-			url,
-			method,
-			data: additionalOAuthParams,
-		};
-
-		const oauthToken = token
-			? { key: token, secret: tokenSecret || "" }
-			: undefined;
-		const oauthData = this.oauth.authorize(requestData, oauthToken);
-
-		// Build signed params: oauth data (stringified) + additional params
-		const signedParams: Record<string, string> = {};
-		for (const [key, value] of Object.entries(oauthData)) {
-			signedParams[key] = String(value);
-		}
-		Object.assign(signedParams, additionalOAuthParams);
-
-		let requestUrl = url;
-		const options: RequestInit = {
-			method,
-			headers: {},
-		};
-
-		if (method === "GET") {
-			const queryString = new URLSearchParams(signedParams).toString();
-			requestUrl = `${url}?${queryString}`;
-		} else if (method === "POST") {
-			(options.headers as Record<string, string>)["Content-Type"] =
-				"application/x-www-form-urlencoded";
-			options.body = new URLSearchParams(signedParams).toString();
-		}
-
-		const response = await fetch(requestUrl, options);
-		const text = await response.text();
-
-		if (!response.ok) {
-			throw new FatSecretApiError(
-				`FatSecret API error: ${response.status} - ${text}`,
-				response.status,
-				parseResponse(text),
-			);
-		}
-
-		return parseResponse(text);
-	}
-
-	/**
-	 * Make a request with OAuth 1.0a signing
-	 * Uses oauth-1.0a library directly for signing
-	 */
-	private async request(
+	private async signedFetch(
 		method: "GET" | "POST",
 		url: string,
 		params: Record<string, string> = {},
@@ -333,7 +275,7 @@ export class FatSecretClient {
 			...params,
 		};
 
-		return this.request(
+		return this.signedFetch(
 			method,
 			API_BASE_URL,
 			allParams,
@@ -368,7 +310,7 @@ export class FatSecretClient {
 	 * Uses POST with Authorization header as per OAuth 1.0a spec
 	 */
 	async getRequestToken(callbackUrl = "oob"): Promise<OAuthTokenResponse> {
-		const response = (await this.oauthRequest("POST", REQUEST_TOKEN_URL, {
+		const response = (await this.signedFetch("POST", REQUEST_TOKEN_URL, {}, {
 			oauth_callback: callbackUrl,
 		})) as Record<string, string>;
 
@@ -395,9 +337,10 @@ export class FatSecretClient {
 		requestTokenSecret: string,
 		verifier: string,
 	): Promise<OAuthTokenResponse> {
-		const response = (await this.oauthRequest(
+		const response = (await this.signedFetch(
 			"GET",
 			ACCESS_TOKEN_URL,
+			{},
 			{ oauth_verifier: verifier },
 			requestToken,
 			requestTokenSecret,
@@ -422,7 +365,7 @@ export class FatSecretClient {
 	async profileCreate(
 		userId: string,
 	): Promise<{ authToken: string; authSecret: string }> {
-		const response = (await this.request("POST", API_BASE_URL, {
+		const response = (await this.signedFetch("POST", API_BASE_URL, {
 			method: "profile.create",
 			user_id: userId,
 			format: "json",
@@ -441,7 +384,7 @@ export class FatSecretClient {
 	async profileGetAuth(
 		userId: string,
 	): Promise<{ authToken: string; authSecret: string }> {
-		const response = (await this.request("GET", API_BASE_URL, {
+		const response = (await this.signedFetch("GET", API_BASE_URL, {
 			method: "profile.get_auth",
 			user_id: userId,
 			format: "json",
