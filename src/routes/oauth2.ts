@@ -25,7 +25,6 @@ import {
 } from "../lib/oauth2-storage.js";
 import { FatSecretClient } from "../lib/client.js";
 import type { SessionData } from "../lib/schemas.js";
-import type { AuthorizationCodeData } from "../lib/oauth2-types.js";
 
 const oauth2Routes = new Hono<{ Bindings: Env }>();
 

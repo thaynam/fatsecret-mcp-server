@@ -4,10 +4,12 @@
  * Global test configuration and mock helpers.
  */
 
-import { beforeEach, vi } from "vitest";
+import { type Mock, beforeEach, vi } from "vitest";
 
 // Mock global fetch
 global.fetch = vi.fn();
+
+const fetchMock = global.fetch as Mock;
 
 // Reset mocks before each test
 beforeEach(() => {
@@ -17,8 +19,8 @@ beforeEach(() => {
 /**
  * Mock a successful fetch response
  */
-export function mockFetchSuccess(data: any, status = 200) {
-	(global.fetch as any).mockResolvedValueOnce({
+export function mockFetchSuccess(data: unknown, status = 200) {
+	fetchMock.mockResolvedValueOnce({
 		ok: status >= 200 && status < 300,
 		status,
 		statusText: "OK",
@@ -31,8 +33,12 @@ export function mockFetchSuccess(data: any, status = 200) {
 /**
  * Mock a fetch error response
  */
-export function mockFetchError(status: number, message: string, data?: any) {
-	(global.fetch as any).mockResolvedValueOnce({
+export function mockFetchError(
+	status: number,
+	message: string,
+	data?: unknown,
+) {
+	fetchMock.mockResolvedValueOnce({
 		ok: false,
 		status,
 		statusText: message,
@@ -50,7 +56,7 @@ export function mockQueryStringResponse(
 	status = 200,
 ) {
 	const queryString = new URLSearchParams(data).toString();
-	(global.fetch as any).mockResolvedValueOnce({
+	fetchMock.mockResolvedValueOnce({
 		ok: status >= 200 && status < 300,
 		status,
 		statusText: "OK",
@@ -68,9 +74,9 @@ export function mockQueryStringResponse(
  * Mock OAuth 2.0 token response followed by API response
  * Used for public data methods that use OAuth 2.0 Client Credentials flow
  */
-export function mockOAuth2Flow(apiData: any, apiStatus = 200) {
+export function mockOAuth2Flow(apiData: unknown, apiStatus = 200) {
 	// First call: OAuth 2.0 token request
-	(global.fetch as any).mockResolvedValueOnce({
+	fetchMock.mockResolvedValueOnce({
 		ok: true,
 		status: 200,
 		statusText: "OK",
@@ -84,7 +90,7 @@ export function mockOAuth2Flow(apiData: any, apiStatus = 200) {
 	});
 
 	// Second call: API request
-	(global.fetch as any).mockResolvedValueOnce({
+	fetchMock.mockResolvedValueOnce({
 		ok: apiStatus >= 200 && apiStatus < 300,
 		status: apiStatus,
 		statusText: apiStatus >= 200 && apiStatus < 300 ? "OK" : "Error",
@@ -97,8 +103,12 @@ export function mockOAuth2Flow(apiData: any, apiStatus = 200) {
 /**
  * Mock OAuth 2.0 token error
  */
-export function mockOAuth2Error(status: number, message: string, data?: any) {
-	(global.fetch as any).mockResolvedValueOnce({
+export function mockOAuth2Error(
+	status: number,
+	message: string,
+	data?: unknown,
+) {
+	fetchMock.mockResolvedValueOnce({
 		ok: false,
 		status,
 		statusText: message,

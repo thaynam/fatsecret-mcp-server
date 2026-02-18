@@ -11,6 +11,9 @@ import { FatSecretClient } from "./lib/client.js";
 import { handleError } from "./lib/errors.js";
 import { getSession } from "./lib/token-storage.js";
 
+// biome-ignore lint/suspicious/noExplicitAny: FatSecret API responses have dynamic shapes
+type ApiResponse = Record<string, any>;
+
 // Props passed from auth middleware
 export interface Props extends Record<string, unknown> {
 	sessionToken: string;
@@ -88,11 +91,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 			async ({ searchExpression, pageNumber, maxResults }) => {
 				try {
-					const response = await this.client.searchFoods(
+					const response = (await this.client.searchFoods(
 						searchExpression,
 						pageNumber ?? 0,
 						maxResults ?? 20,
-					);
+					)) as ApiResponse;
 
 					const totalResults = response.foods?.total_results || 0;
 
@@ -121,7 +124,7 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 			async ({ foodId }) => {
 				try {
-					const response = await this.client.getFood(foodId);
+					const response = (await this.client.getFood(foodId)) as ApiResponse;
 
 					const food = response.food;
 					const foodName = food?.food_name || "Unknown";
@@ -160,11 +163,11 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 			async ({ searchExpression, pageNumber, maxResults }) => {
 				try {
-					const response = await this.client.searchRecipes(
+					const response = (await this.client.searchRecipes(
 						searchExpression,
 						pageNumber ?? 0,
 						maxResults ?? 20,
-					);
+					)) as ApiResponse;
 
 					const totalResults = response.recipes?.total_results || 0;
 
@@ -193,7 +196,9 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 			async ({ recipeId }) => {
 				try {
-					const response = await this.client.getRecipe(recipeId);
+					const response = (await this.client.getRecipe(
+						recipeId,
+					)) as ApiResponse;
 
 					const recipe = response.recipe;
 					const recipeName = recipe?.recipe_name || "Unknown";
@@ -251,7 +256,9 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 			async ({ date }) => {
 				try {
-					const response = await this.client.getFoodEntries(date);
+					const response = (await this.client.getFoodEntries(
+						date,
+					)) as ApiResponse;
 
 					const entries = response.food_entries?.food_entry;
 					const entryCount = Array.isArray(entries)
@@ -332,7 +339,9 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 			async ({ date }) => {
 				try {
-					const response = await this.client.getWeightMonth(date);
+					const response = (await this.client.getWeightMonth(
+						date,
+					)) as ApiResponse;
 
 					const weights = response.month?.day;
 					const entryCount = Array.isArray(weights)

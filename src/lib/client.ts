@@ -97,10 +97,14 @@ export class FatSecretClient {
 	 */
 	async getOAuth2Token(): Promise<{ accessToken: string; expiresAt: number }> {
 		// Return cached token if still valid
-		if (this.isOAuth2TokenValid()) {
+		if (
+			this.isOAuth2TokenValid() &&
+			this.oauth2AccessToken &&
+			this.oauth2ExpiresAt
+		) {
 			return {
-				accessToken: this.oauth2AccessToken!,
-				expiresAt: this.oauth2ExpiresAt!,
+				accessToken: this.oauth2AccessToken,
+				expiresAt: this.oauth2ExpiresAt,
 			};
 		}
 
@@ -162,7 +166,7 @@ export class FatSecretClient {
 		additionalOAuthParams: Record<string, string> = {},
 		token?: string,
 		tokenSecret?: string,
-	): Promise<any> {
+	): Promise<unknown> {
 		const requestData = {
 			url,
 			method,
@@ -221,7 +225,7 @@ export class FatSecretClient {
 		additionalOAuthParams: Record<string, string> = {},
 		token?: string,
 		tokenSecret?: string,
-	): Promise<any> {
+	): Promise<unknown> {
 		const requestData = {
 			url,
 			method,
@@ -276,7 +280,7 @@ export class FatSecretClient {
 	private async apiRequestOAuth2(
 		apiMethod: string,
 		params: Record<string, string> = {},
-	): Promise<any> {
+	): Promise<unknown> {
 		const { accessToken } = await this.getOAuth2Token();
 
 		const allParams = {
@@ -315,7 +319,7 @@ export class FatSecretClient {
 		method: "GET" | "POST",
 		apiMethod: string,
 		params: Record<string, string> = {},
-	): Promise<any> {
+	): Promise<unknown> {
 		if (!this.hasUserAuth()) {
 			throw new FatSecretApiError(
 				"User authentication required. Please connect your FatSecret account.",
@@ -348,7 +352,7 @@ export class FatSecretClient {
 		apiMethod: string,
 		params: Record<string, string> = {},
 		requiresAuth = false,
-	): Promise<any> {
+	): Promise<unknown> {
 		if (requiresAuth) {
 			return this.apiRequestOAuth1(method, apiMethod, params);
 		}
@@ -364,9 +368,9 @@ export class FatSecretClient {
 	 * Uses POST with Authorization header as per OAuth 1.0a spec
 	 */
 	async getRequestToken(callbackUrl = "oob"): Promise<OAuthTokenResponse> {
-		const response = await this.oauthRequest("POST", REQUEST_TOKEN_URL, {
+		const response = (await this.oauthRequest("POST", REQUEST_TOKEN_URL, {
 			oauth_callback: callbackUrl,
-		});
+		})) as Record<string, string>;
 
 		return {
 			oauth_token: response.oauth_token,
@@ -391,13 +395,13 @@ export class FatSecretClient {
 		requestTokenSecret: string,
 		verifier: string,
 	): Promise<OAuthTokenResponse> {
-		const response = await this.oauthRequest(
+		const response = (await this.oauthRequest(
 			"GET",
 			ACCESS_TOKEN_URL,
 			{ oauth_verifier: verifier },
 			requestToken,
 			requestTokenSecret,
-		);
+		)) as Record<string, string>;
 
 		return {
 			oauth_token: response.oauth_token,
@@ -418,11 +422,11 @@ export class FatSecretClient {
 	async profileCreate(
 		userId: string,
 	): Promise<{ authToken: string; authSecret: string }> {
-		const response = await this.request("POST", API_BASE_URL, {
+		const response = (await this.request("POST", API_BASE_URL, {
 			method: "profile.create",
 			user_id: userId,
 			format: "json",
-		});
+		})) as { profile: { auth_token: string; auth_secret: string } };
 
 		return {
 			authToken: response.profile.auth_token,
@@ -437,11 +441,11 @@ export class FatSecretClient {
 	async profileGetAuth(
 		userId: string,
 	): Promise<{ authToken: string; authSecret: string }> {
-		const response = await this.request("GET", API_BASE_URL, {
+		const response = (await this.request("GET", API_BASE_URL, {
 			method: "profile.get_auth",
 			user_id: userId,
 			format: "json",
-		});
+		})) as { profile: { auth_token: string; auth_secret: string } };
 
 		return {
 			authToken: response.profile.auth_token,
@@ -460,7 +464,7 @@ export class FatSecretClient {
 		searchExpression: string,
 		pageNumber = 0,
 		maxResults = 20,
-	): Promise<any> {
+	): Promise<unknown> {
 		return this.apiRequest("GET", "foods.search", {
 			search_expression: searchExpression,
 			page_number: pageNumber.toString(),
@@ -471,7 +475,7 @@ export class FatSecretClient {
 	/**
 	 * Get detailed information about a specific food
 	 */
-	async getFood(foodId: string): Promise<any> {
+	async getFood(foodId: string): Promise<unknown> {
 		return this.apiRequest("GET", "food.get", {
 			food_id: foodId,
 		});
@@ -488,7 +492,7 @@ export class FatSecretClient {
 		searchExpression: string,
 		pageNumber = 0,
 		maxResults = 20,
-	): Promise<any> {
+	): Promise<unknown> {
 		return this.apiRequest("GET", "recipes.search", {
 			search_expression: searchExpression,
 			page_number: pageNumber.toString(),
@@ -499,7 +503,7 @@ export class FatSecretClient {
 	/**
 	 * Get detailed information about a specific recipe
 	 */
-	async getRecipe(recipeId: string): Promise<any> {
+	async getRecipe(recipeId: string): Promise<unknown> {
 		return this.apiRequest("GET", "recipe.get", {
 			recipe_id: recipeId,
 		});
@@ -512,14 +516,14 @@ export class FatSecretClient {
 	/**
 	 * Get the authenticated user's profile
 	 */
-	async getUserProfile(): Promise<any> {
+	async getUserProfile(): Promise<unknown> {
 		return this.apiRequest("GET", "profile.get", {}, true);
 	}
 
 	/**
 	 * Get food diary entries for a specific date
 	 */
-	async getFoodEntries(date?: string): Promise<any> {
+	async getFoodEntries(date?: string): Promise<unknown> {
 		return this.apiRequest(
 			"GET",
 			"food_entries.get",
@@ -539,7 +543,7 @@ export class FatSecretClient {
 		quantity: number,
 		mealType: MealType,
 		date?: string,
-	): Promise<any> {
+	): Promise<unknown> {
 		return this.apiRequest(
 			"POST",
 			"food_entry.create",
@@ -557,7 +561,7 @@ export class FatSecretClient {
 	/**
 	 * Get weight entries for a specific month
 	 */
-	async getWeightMonth(date?: string): Promise<any> {
+	async getWeightMonth(date?: string): Promise<unknown> {
 		return this.apiRequest(
 			"GET",
 			"weights.get_month",

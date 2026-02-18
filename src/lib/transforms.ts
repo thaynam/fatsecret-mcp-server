@@ -48,7 +48,7 @@ export function removeUndefined<T extends Record<string, unknown>>(
 	const result: Partial<T> = {};
 	for (const [key, value] of Object.entries(obj)) {
 		if (value !== undefined) {
-			(result as any)[key] = value;
+			(result as Record<string, unknown>)[key] = value;
 		}
 	}
 	return result;
@@ -82,7 +82,7 @@ export function escapeHtml(str: string): string {
 /**
  * Parse FatSecret API response - handles both JSON and querystring formats
  */
-export function parseResponse(text: string): any {
+export function parseResponse(text: string): unknown {
 	try {
 		return JSON.parse(text);
 	} catch {

@@ -20,9 +20,9 @@ export interface McpToolResponse {
  */
 export class FatSecretApiError extends Error {
 	status: number;
-	data?: any;
+	data?: unknown;
 
-	constructor(message: string, status: number, data?: any) {
+	constructor(message: string, status: number, data?: unknown) {
 		super(message);
 		this.name = "FatSecretApiError";
 		this.status = status;
@@ -82,7 +82,7 @@ export function formatFatSecretApiError(
 			parts.push("**Details:**");
 			parts.push(error.data);
 		} else if (typeof error.data === "object") {
-			const errorData = error.data;
+			const errorData = error.data as Record<string, Record<string, string>>;
 
 			if (errorData.error) {
 				parts.push("");

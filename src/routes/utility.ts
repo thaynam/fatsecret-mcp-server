@@ -156,7 +156,7 @@ utilityRoutes.get("/setup", async (c) => {
 		: `<div class="section">
             <h3>Your Session Token</h3>
             <p style="font-size:14px;color:#666;margin-bottom:10px;">Use this token to configure your MCP client:</p>
-            <div class="token-display" id="tokenDisplay">${escapeHtml(sessionToken!)}</div>
+            <div class="token-display" id="tokenDisplay">${escapeHtml(sessionToken || "")}</div>
             <button class="copy-btn" onclick="copyToken()">Copy Token</button>
         </div>
         ${
@@ -181,7 +181,7 @@ utilityRoutes.get("/setup", async (c) => {
       "transport": {
         "type": "http",
         "headers": {
-          "Authorization": "Bearer ${escapeHtml(sessionToken!)}"
+          "Authorization": "Bearer ${escapeHtml(sessionToken || "")}"
         }
       }
     }
@@ -194,14 +194,14 @@ utilityRoutes.get("/setup", async (c) => {
         </div>`;
 
 	const statusHtml = hasCredentials
-		? `<div class="status configured"><span class="status-icon">OK</span><div><strong>API Configured</strong><div style="font-size:14px;margin-top:4px;">Client: ${escapeHtml(maskSecret(session!.clientId))}</div></div></div>`
+		? `<div class="status configured"><span class="status-icon">OK</span><div><strong>API Configured</strong><div style="font-size:14px;margin-top:4px;">Client: ${escapeHtml(maskSecret(session?.clientId || ""))}</div></div></div>`
 		: `<div class="status not-configured"><span class="status-icon">!</span><div><strong>Not Configured</strong></div></div>`;
 
 	const userAuthStatus =
 		hasCredentials && !hasUserAuth
 			? `<div class="status not-configured"><span class="status-icon">~</span><div><strong>Account Not Connected</strong></div></div>`
 			: hasUserAuth
-				? `<div class="status connected"><span class="status-icon">+</span><div><strong>Account Connected</strong><div style="font-size:14px;margin-top:4px;">User: ${escapeHtml(session!.userId || "OK")}</div></div></div>`
+				? `<div class="status connected"><span class="status-icon">+</span><div><strong>Account Connected</strong><div style="font-size:14px;margin-top:4px;">User: ${escapeHtml(session?.userId || "OK")}</div></div></div>`
 				: "";
 
 	c.header("Cache-Control", "no-store");

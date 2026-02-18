@@ -4,7 +4,7 @@
  * Tests for the FatSecret API client.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { type Mock, describe, it, expect, beforeEach } from "vitest";
 import { FatSecretClient } from "../../src/lib/client.js";
 import {
 	mockFetchSuccess,
@@ -115,7 +115,7 @@ describe("FatSecretClient", () => {
 				await client.searchFoods("apple", 2, 10);
 
 				// Second call is the API request (first is OAuth token)
-				const fetchCall = (global.fetch as any).mock.calls[1];
+				const fetchCall = (global.fetch as Mock).mock.calls[1];
 				const url = new URL(fetchCall[0]);
 				expect(url.searchParams.get("search_expression")).toBe("apple");
 				expect(url.searchParams.get("page_number")).toBe("2");
@@ -238,7 +238,7 @@ describe("FatSecretClient", () => {
 
 				await client.addFoodEntry("food_123", "serving_456", 1, "snack");
 
-				const fetchCall = (global.fetch as any).mock.calls[0];
+				const fetchCall = (global.fetch as Mock).mock.calls[0];
 				const body = new URLSearchParams(fetchCall[1].body);
 				expect(body.get("meal")).toBe("other");
 			});
