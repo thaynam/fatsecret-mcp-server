@@ -1,0 +1,60 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fatsecret-mcp-server",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "migrations": [
+    {
+      "new_sqlite_classes": ["FatSecretMCP"],
+      "tag": "v1",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "FatSecretMCP",
+        "name": "MCP_OBJECT",
+      },
+    ],
+  },
+  "observability": {
+    "enabled": true,
+  },
+  /**
+   * KV Namespaces - Production
+   * Stores encrypted user OAuth tokens for multi-user support
+   */
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "f471893fb51b4c3483fa5c2ab2d525ee",
+    },
+  ],
+  /**
+   * Development Environment
+   */
+  "env": {
+    "dev": {
+      "name": "fatsecret-mcp-server-dev",
+      "durable_objects": {
+        "bindings": [
+          {
+            "class_name": "FatSecretMCP",
+            "name": "MCP_OBJECT",
+          },
+        ],
+      },
+      "kv_namespaces": [
+        {
+          "binding": "OAUTH_KV",
+          "id": "f471893fb51b4c3483fa5c2ab2d525ee",
+        },
+      ],
+    },
+  },
+  /**
+   * Secrets (configure via wrangler secret put):
+   * - COOKIE_ENCRYPTION_KEY: 64-char hex string for AES-GCM encryption
+   */
+}

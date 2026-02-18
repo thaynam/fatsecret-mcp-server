@@ -1,0 +1,43 @@
+{
+	"permissions": {
+		"allow": [
+			"Bash(find:*)",
+			"Bash(fd:*)",
+			"Bash(ls:*)",
+			"Bash(rg:*)",
+			"Bash(node:*)",
+			"Bash(npm run build:*)",
+			"WebFetch(domain:raw.githubusercontent.com)",
+			"WebFetch(domain:platform.fatsecret.com)",
+			"Bash(npm run type-check:*)",
+			"Bash(npm install:*)",
+			"Bash(npm run format:*)",
+			"Bash(npm run lint:fix:*)",
+			"Bash(npm run test:run:*)",
+			"Bash(curl:*)",
+			"Bash(pkill:*)",
+			"Bash(npm run deploy:*)",
+			"WebSearch",
+			"WebFetch(domain:pyfatsecret.readthedocs.io)",
+			"WebFetch(domain:groups.google.com)",
+			"WebFetch(domain:medium.com)",
+			"WebFetch(domain:github.com)",
+			"WebFetch(domain:www.pythonanywhere.com)",
+			"WebFetch(domain:www.getclockwise.com)",
+			"Bash(grep:*)",
+			"Bash(python3:*)",
+			"Skill(code-review:code-review)",
+			"Bash(git -C /Users/laptop/dev/fatsecret-mcp log --all --oneline)",
+			"Bash(git -C /Users/laptop/dev/fatsecret-mcp log --all --format=\"%H %s\")",
+			"Bash(while read hash msg)",
+			"Bash(do echo \"=== $msg ===\")",
+			"Bash(git -C /Users/laptop/dev/fatsecret-mcp show --stat \"$hash\")",
+			"Bash(done)",
+			"Bash(git -C /Users/laptop/dev/fatsecret-mcp log --all -p)",
+			"Bash(git -C /Users/laptop/dev/fatsecret-mcp show HEAD~2:utils/test-interactive.js)",
+			"Bash(git -C /Users/laptop/dev/fatsecret-mcp show HEAD~2:utils/test-mcp.js)",
+			"Bash(git -C /Users/laptop/dev/fatsecret-mcp status --porcelain)"
+		],
+		"deny": []
+	}
+}
