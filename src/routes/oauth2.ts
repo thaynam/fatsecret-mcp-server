@@ -24,6 +24,7 @@ import {
 	getAuthorizationCode,
 } from "../lib/oauth2-storage.js";
 import { FatSecretClient } from "../lib/client.js";
+import { safeLogError } from "../lib/errors.js";
 import type { SessionData } from "../lib/schemas.js";
 
 const oauth2Routes = new Hono<{ Bindings: Env }>();
@@ -41,7 +42,7 @@ async function sha256Hex(input: string): Promise<string> {
 		.join("");
 }
 
-/** Verify PKCE code_verifier against stored code_challenge (S256) */
+/** Verify PKCE code_verifier against stored code_challenge (S256) with constant-time comparison */
 async function verifyPKCE(
 	codeVerifier: string,
 	codeChallenge: string,
@@ -54,7 +55,10 @@ async function verifyPKCE(
 		.replace(/\+/g, "-")
 		.replace(/\//g, "_")
 		.replace(/=+$/g, "");
-	return computed === codeChallenge;
+	const a = new TextEncoder().encode(computed);
+	const b = new TextEncoder().encode(codeChallenge);
+	if (a.byteLength !== b.byteLength) return false;
+	return crypto.subtle.timingSafeEqual(a, b);
 }
 
 /** Build the origin URL from a request */
@@ -154,6 +158,12 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 			}
 		}
 
+		// Validate client_name length
+		const clientName =
+			typeof body.client_name === "string"
+				? body.client_name.slice(0, 200)
+				: undefined;
+
 		// Generate client credentials
 		const clientId = generateSessionToken();
 		const clientSecret = generateSessionToken();
@@ -168,7 +178,7 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 				clientId,
 				clientSecretHash,
 				redirectUris,
-				clientName: body.client_name,
+				clientName,
 				grantTypes: body.grant_types || ["authorization_code"],
 				responseTypes: body.response_types || ["code"],
 				createdAt: Date.now(),
@@ -176,12 +186,14 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 		);
 
 		// Return client credentials (plaintext secret only returned once)
+		c.header("Cache-Control", "no-store");
+		c.header("Pragma", "no-cache");
 		return c.json(
 			{
 				client_id: clientId,
 				client_secret: clientSecret,
 				redirect_uris: redirectUris,
-				client_name: body.client_name,
+				client_name: clientName,
 				token_endpoint_auth_method: "client_secret_post",
 				grant_types: ["authorization_code"],
 				response_types: ["code"],
@@ -189,7 +201,7 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 			201,
 		);
 	} catch (error) {
-		console.error("DCR error:", error);
+		safeLogError("DCR error", error);
 		return c.json(
 			{ error: "server_error", error_description: "Registration failed" },
 			500,
@@ -608,15 +620,12 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 			if (state) callbackUrl.searchParams.set("state", state);
 			return c.redirect(callbackUrl.toString());
 		} catch (error) {
-			console.error("OAuth2 authorize error:", error);
+			safeLogError("OAuth2 authorize error", error);
 			return c.html(
 				renderAuthorizePage({
 					clientName: client.clientName,
 					hasSession: false,
-					error:
-						error instanceof Error
-							? error.message
-							: "Failed to connect. Please try again.",
+					error: "Failed to connect. Please check your credentials and try again.",
 					clientId,
 					redirectUri,
 					state,
@@ -721,7 +730,7 @@ oauth2Routes.post("/oauth2/token", async (c) => {
 			400,
 		);
 	}
-	if (redirectUri && codeData.redirectUri !== redirectUri) {
+	if (!redirectUri || codeData.redirectUri !== redirectUri) {
 		return c.json(
 			{ error: "invalid_grant", error_description: "redirect_uri mismatch" },
 			400,

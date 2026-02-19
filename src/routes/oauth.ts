@@ -18,6 +18,7 @@ import {
 	generateSessionToken,
 } from "../lib/token-storage.js";
 import { escapeHtml, getSessionCookie } from "../lib/transforms.js";
+import { safeLogError } from "../lib/errors.js";
 import type { SessionData, OAuthState } from "../lib/schemas.js";
 
 const oauthRoutes = new Hono<{ Bindings: Env }>();
@@ -90,7 +91,7 @@ oauthRoutes.get("/oauth/connect", async (c) => {
 
 		return c.redirect("/setup?success=connected");
 	} catch (error) {
-		console.error("Profile creation error:", error);
+		safeLogError("Profile creation error", error);
 		let message = "Failed to create profile";
 		try {
 			const errorMsg = error instanceof Error ? error.message : "Unknown error";
@@ -169,7 +170,7 @@ oauthRoutes.get("/oauth/connect-account", async (c) => {
 		const authUrl = client.getAuthorizationUrl(tokenResponse.oauth_token);
 		return c.redirect(authUrl);
 	} catch (error) {
-		console.error("OAuth connect error:", error);
+		safeLogError("OAuth connect error", error);
 		let message = "Failed to start OAuth";
 		try {
 			const errorMsg = error instanceof Error ? error.message : "Unknown error";
@@ -259,7 +260,7 @@ oauthRoutes.post("/oauth/setup", async (c) => {
 				"Visit the authorization URL to grant access, then complete the flow with /oauth/callback",
 		});
 	} catch (error) {
-		console.error("OAuth setup error:", error);
+		safeLogError("OAuth setup error", error);
 		return c.json(
 			{
 				error: "oauth_setup_failed",
@@ -431,7 +432,7 @@ oauthRoutes.get("/oauth/callback", async (c) => {
             </html>
         `);
 	} catch (error) {
-		console.error("OAuth callback error:", error);
+		safeLogError("OAuth callback error", error);
 		return c.html(
 			`
             <!DOCTYPE html>
@@ -541,7 +542,7 @@ oauthRoutes.post("/oauth/complete", async (c) => {
 				"Authentication successful. Use the sessionToken as a Bearer token.",
 		});
 	} catch (error) {
-		console.error("OAuth complete error:", error);
+		safeLogError("OAuth complete error", error);
 		return c.json(
 			{
 				error: "oauth_complete_failed",

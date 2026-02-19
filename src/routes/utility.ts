@@ -5,7 +5,6 @@
  */
 
 import { Hono } from "hono";
-import { APP_VERSION } from "../app.js";
 import { FatSecretClient } from "../lib/client.js";
 import {
 	getSession,
@@ -15,6 +14,7 @@ import {
 	maskSecret,
 } from "../lib/token-storage.js";
 import { escapeHtml, getSessionCookie } from "../lib/transforms.js";
+import { safeLogError } from "../lib/errors.js";
 import type { SessionData } from "../lib/schemas.js";
 
 const utilityRoutes = new Hono<{ Bindings: Env }>();
@@ -23,12 +23,7 @@ const utilityRoutes = new Hono<{ Bindings: Env }>();
  * GET /health
  */
 utilityRoutes.get("/health", (c) => {
-	return c.json({
-		status: "healthy",
-		service: "fatsecret-mcp-server",
-		version: APP_VERSION,
-		timestamp: new Date().toISOString(),
-	});
+	return c.json({ status: "ok" });
 });
 
 /**
@@ -357,7 +352,7 @@ utilityRoutes.post("/api/save-credentials", async (c) => {
 		);
 		return response;
 	} catch (error) {
-		console.error("Save credentials error:", error);
+		safeLogError("Save credentials error", error);
 		return c.json({ error: "Failed to save credentials" }, 500);
 	}
 });

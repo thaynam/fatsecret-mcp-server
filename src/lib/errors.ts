@@ -203,6 +203,14 @@ function formatValidationError(error: ZodError): McpToolResponse {
 }
 
 /**
+ * Safe error logger that avoids leaking sensitive data
+ */
+export function safeLogError(context: string, error: unknown): void {
+	const message = error instanceof Error ? error.message : "Unknown error";
+	console.error(`${context}: ${message}`);
+}
+
+/**
  * Central error handler that routes errors to appropriate formatters
  */
 export function handleError(error: unknown): McpToolResponse {

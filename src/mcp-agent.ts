@@ -85,10 +85,15 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 				inputSchema: {
 					searchExpression: z
 						.string()
+						.min(1)
+						.max(200)
 						.describe('Search term for foods (e.g., "chicken breast", "apple")'),
-					pageNumber: z.number().optional().describe("Page number (default: 0)"),
+					pageNumber: z.number().int().min(0).max(1000).optional().describe("Page number (default: 0)"),
 					maxResults: z
 						.number()
+						.int()
+						.min(1)
+						.max(50)
 						.optional()
 						.describe("Max results per page (default: 20, max: 50)"),
 				},
@@ -126,7 +131,7 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			{
 				description: "Get detailed nutritional information for a specific food",
 				inputSchema: {
-					foodId: z.string().describe("The FatSecret food ID"),
+					foodId: z.string().min(1).max(50).describe("The FatSecret food ID"),
 				},
 			},
 			async ({ foodId }) => {
@@ -163,10 +168,13 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			{
 				description: "Search for recipes in the FatSecret database",
 				inputSchema: {
-					searchExpression: z.string().describe("Search term for recipes"),
-					pageNumber: z.number().optional().describe("Page number (default: 0)"),
+					searchExpression: z.string().min(1).max(200).describe("Search term for recipes"),
+					pageNumber: z.number().int().min(0).max(1000).optional().describe("Page number (default: 0)"),
 					maxResults: z
 						.number()
+						.int()
+						.min(1)
+						.max(50)
 						.optional()
 						.describe("Max results per page (default: 20, max: 50)"),
 				},
@@ -204,7 +212,7 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			{
 				description: "Get detailed information about a specific recipe",
 				inputSchema: {
-					recipeId: z.string().describe("The FatSecret recipe ID"),
+					recipeId: z.string().min(1).max(50).describe("The FatSecret recipe ID"),
 				},
 			},
 			async ({ recipeId }) => {
@@ -272,6 +280,7 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 				inputSchema: {
 					date: z
 						.string()
+						.regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD format")
 						.optional()
 						.describe("Date in YYYY-MM-DD format (default: today)"),
 				},
@@ -312,14 +321,15 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 			{
 				description: "Add a food entry to the user's food diary",
 				inputSchema: {
-					foodId: z.string().describe("The FatSecret food ID"),
-					servingId: z.string().describe("The serving ID for the food"),
+					foodId: z.string().min(1).max(50).describe("The FatSecret food ID"),
+					servingId: z.string().min(1).max(50).describe("The serving ID for the food"),
 					quantity: z.number().describe("Quantity of the serving"),
 					mealType: z
 						.enum(["breakfast", "lunch", "dinner", "snack"])
 						.describe("Meal type"),
 					date: z
 						.string()
+						.regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD format")
 						.optional()
 						.describe("Date in YYYY-MM-DD format (default: today)"),
 				},
@@ -359,6 +369,7 @@ export class FatSecretMCP extends McpAgent<Env, Record<string, never>, Props> {
 				inputSchema: {
 					date: z
 						.string()
+						.regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD format")
 						.optional()
 						.describe(
 							"Date in YYYY-MM-DD format to specify the month (default: current month)",

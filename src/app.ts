@@ -3,6 +3,7 @@
  */
 
 import { Hono } from "hono";
+import { safeLogError } from "./lib/errors.js";
 
 export const APP_VERSION = "0.2.0";
 import oauth2Routes from "./routes/oauth2.js";
@@ -21,14 +22,33 @@ interface Variables {
 // Create main Hono app with proper TypeScript types
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-// Global CORS middleware
+// Paths that use Bearer auth (not cookies) and need open CORS for MCP clients
+const OPEN_CORS_PREFIXES = ["/mcp", "/sse", "/.well-known", "/health"];
+const OPEN_CORS_EXACT = ["/oauth2/token", "/oauth2/register"];
+
+function needsOpenCors(path: string): boolean {
+	return (
+		OPEN_CORS_PREFIXES.some((p) => path.startsWith(p)) ||
+		OPEN_CORS_EXACT.includes(path)
+	);
+}
+
+// Global CORS and security headers middleware
 app.use("*", async (c, next) => {
+	const path = new URL(c.req.url).pathname;
+	const isOpen = needsOpenCors(path);
+
 	// Handle OPTIONS preflight requests
 	if (c.req.method === "OPTIONS") {
+		const corsOrigin = isOpen
+			? "*"
+			: (c.req.header("Origin") || "");
 		return new Response(null, {
 			status: 204,
 			headers: {
-				"Access-Control-Allow-Origin": "*",
+				...(corsOrigin
+					? { "Access-Control-Allow-Origin": corsOrigin }
+					: {}),
 				"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 				"Access-Control-Allow-Headers": "Content-Type, Authorization",
 				"Access-Control-Max-Age": "86400",
@@ -38,8 +58,16 @@ app.use("*", async (c, next) => {
 
 	await next();
 
-	// Add CORS headers to all responses
-	c.res.headers.set("Access-Control-Allow-Origin", "*");
+	// CORS: open for MCP/Bearer routes, same-origin only for cookie routes
+	if (isOpen) {
+		c.res.headers.set("Access-Control-Allow-Origin", "*");
+	} else {
+		const origin = c.req.header("Origin");
+		const selfOrigin = new URL(c.req.url).origin;
+		if (origin === selfOrigin) {
+			c.res.headers.set("Access-Control-Allow-Origin", origin);
+		}
+	}
 	c.res.headers.set(
 		"Access-Control-Allow-Methods",
 		"GET, POST, DELETE, OPTIONS",
@@ -57,11 +85,19 @@ app.use("*", async (c, next) => {
 		"Permissions-Policy",
 		"camera=(), microphone=(), geolocation=()",
 	);
+	c.res.headers.set(
+		"Strict-Transport-Security",
+		"max-age=31536000; includeSubDomains",
+	);
+	c.res.headers.set(
+		"Content-Security-Policy",
+		"default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+	);
 });
 
 // Error handling middleware
 app.onError((err, c) => {
-	console.error("Unhandled error:", err);
+	safeLogError("Unhandled error", err);
 	return c.json(
 		{
 			error: "internal_server_error",
