@@ -7,6 +7,7 @@
 import { createMiddleware } from "hono/factory";
 import { getSession } from "../lib/token-storage.js";
 import type { Variables } from "../app.js";
+import { MAX_TOKEN_LENGTH } from "../lib/constants.js";
 
 /**
  * Bearer token authentication middleware
@@ -25,8 +26,7 @@ export const bearerAuth = createMiddleware<{
 		return c.json(
 			{
 				error: "unauthorized",
-				message:
-					"Authentication required. Please provide a valid Bearer token.",
+				message: "Authentication required. Please provide a valid Bearer token.",
 			},
 			401,
 			{
@@ -37,22 +37,14 @@ export const bearerAuth = createMiddleware<{
 
 	const token = authHeader.substring(7); // Remove "Bearer " prefix
 
-	if (token.length > 200) {
-		return c.json(
-			{ error: "unauthorized", message: "Invalid token" },
-			401,
-			{
-				"WWW-Authenticate": `Bearer realm="${origin}/mcp", resource_metadata="${resourceMetadataUrl}", error="invalid_token"`,
-			},
-		);
+	if (token.length > MAX_TOKEN_LENGTH) {
+		return c.json({ error: "unauthorized", message: "Invalid token" }, 401, {
+			"WWW-Authenticate": `Bearer realm="${origin}/mcp", resource_metadata="${resourceMetadataUrl}", error="invalid_token"`,
+		});
 	}
 
 	// Load session from encrypted KV
-	const sessionData = await getSession(
-		c.env.OAUTH_KV,
-		c.env.COOKIE_ENCRYPTION_KEY,
-		token,
-	);
+	const sessionData = await getSession(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, token);
 
 	if (!sessionData) {
 		return c.json(

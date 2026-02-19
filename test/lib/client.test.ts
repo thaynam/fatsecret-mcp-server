@@ -205,9 +205,7 @@ describe("FatSecretClient", () => {
 			it("should get food entries for a date", async () => {
 				const mockResponse = {
 					food_entries: {
-						food_entry: [
-							{ food_entry_id: "1", food_entry_description: "Breakfast" },
-						],
+						food_entry: [{ food_entry_id: "1", food_entry_description: "Breakfast" }],
 					},
 				};
 				mockFetchSuccess(mockResponse);
@@ -285,9 +283,7 @@ describe("FatSecretClient", () => {
 				error: { code: 8, message: "Invalid parameter" },
 			});
 
-			await expect(client.searchFoods("test")).rejects.toThrow(
-				"FatSecret API error",
-			);
+			await expect(client.searchFoods("test")).rejects.toThrow("FatSecret API error");
 		});
 
 		it("should require user auth for protected endpoints", async () => {

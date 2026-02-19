@@ -2,6 +2,8 @@
  * Data transformation utilities for FatSecret API
  */
 
+import { MAX_RAW_RESPONSE_LENGTH } from "./constants.js";
+
 /**
  * Convert a date string (YYYY-MM-DD) or Date to FatSecret's "days since epoch" format
  * FatSecret uses days since Unix epoch (1970-01-01) for date parameters
@@ -32,13 +34,18 @@ export function dateToFatSecretFormat(dateString?: string): string {
  * Convert meal type string to FatSecret format
  * FatSecret expects: breakfast, lunch, dinner, other (for snack)
  */
-export function normalizeMealType(
-	mealType: "breakfast" | "lunch" | "dinner" | "snack",
-): string {
+export function normalizeMealType(mealType: "breakfast" | "lunch" | "dinner" | "snack"): string {
 	if (mealType === "snack") {
 		return "other";
 	}
 	return mealType;
+}
+
+/**
+ * Truncate a string to maxLen characters, appending "..." if truncated
+ */
+export function truncate(str: string, maxLen: number): string {
+	return str.length > maxLen ? `${str.substring(0, maxLen)}...` : str;
 }
 
 /**
@@ -75,7 +82,12 @@ export function parseResponse(text: string): unknown {
 		}
 		const keys = Object.keys(result);
 		if (keys.length === 0 || (keys.length === 1 && result[keys[0]] === "")) {
-			return { raw: text.length > 500 ? text.substring(0, 500) : text };
+			return {
+				raw:
+					text.length > MAX_RAW_RESPONSE_LENGTH
+						? text.substring(0, MAX_RAW_RESPONSE_LENGTH)
+						: text,
+			};
 		}
 		return result;
 	}

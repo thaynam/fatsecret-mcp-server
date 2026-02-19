@@ -6,13 +6,9 @@
  */
 
 import { encryptData, decryptData, kvKeyHash } from "./token-storage.js";
-import type {
-	OAuth2ClientData,
-	AuthorizationCodeData,
-} from "./oauth2-types.js";
-
-const CLIENT_EXPIRATION = 90 * 24 * 60 * 60; // 90 days in seconds
-const CODE_EXPIRATION = 10 * 60; // 10 minutes in seconds
+import { safeLogError } from "./errors.js";
+import type { OAuth2ClientData, AuthorizationCodeData } from "./oauth2-types.js";
+import { OAUTH2_CLIENT_TTL_SECONDS, OAUTH2_CODE_TTL_SECONDS } from "./constants.js";
 
 /**
  * Store a registered OAuth 2.0 client in KV (encrypted)
@@ -23,12 +19,9 @@ export async function storeOAuth2Client(
 	clientId: string,
 	clientData: OAuth2ClientData,
 ): Promise<void> {
-	const encrypted = await encryptData(
-		JSON.stringify(clientData),
-		encryptionKey,
-	);
+	const encrypted = await encryptData(JSON.stringify(clientData), encryptionKey);
 	await kv.put(`oauth2_client:${await kvKeyHash(clientId)}`, encrypted, {
-		expirationTtl: CLIENT_EXPIRATION,
+		expirationTtl: OAUTH2_CLIENT_TTL_SECONDS,
 	});
 }
 
@@ -45,7 +38,8 @@ export async function getOAuth2Client(
 	try {
 		const decrypted = await decryptData(encrypted, encryptionKey);
 		return JSON.parse(decrypted) as OAuth2ClientData;
-	} catch {
+	} catch (error) {
+		safeLogError("Failed to decrypt OAuth2 client data", error);
 		return null;
 	}
 }
@@ -61,7 +55,7 @@ export async function storeAuthorizationCode(
 ): Promise<void> {
 	const encrypted = await encryptData(JSON.stringify(codeData), encryptionKey);
 	await kv.put(`oauth2_code:${await kvKeyHash(code)}`, encrypted, {
-		expirationTtl: CODE_EXPIRATION,
+		expirationTtl: OAUTH2_CODE_TTL_SECONDS,
 	});
 }
 
@@ -82,7 +76,8 @@ export async function getAuthorizationCode(
 		// Single-use: delete only after successful decryption
 		await kv.delete(kvKey);
 		return data;
-	} catch {
+	} catch (error) {
+		safeLogError("Failed to decrypt authorization code", error);
 		return null;
 	}
 }

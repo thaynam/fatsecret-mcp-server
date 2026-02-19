@@ -33,11 +33,7 @@ export function mockFetchSuccess(data: unknown, status = 200) {
 /**
  * Mock a fetch error response
  */
-export function mockFetchError(
-	status: number,
-	message: string,
-	data?: unknown,
-) {
+export function mockFetchError(status: number, message: string, data?: unknown) {
 	fetchMock.mockResolvedValueOnce({
 		ok: false,
 		status,
@@ -51,10 +47,7 @@ export function mockFetchError(
 /**
  * Mock a query string response (OAuth endpoints)
  */
-export function mockQueryStringResponse(
-	data: Record<string, string>,
-	status = 200,
-) {
+export function mockQueryStringResponse(data: Record<string, string>, status = 200) {
 	const queryString = new URLSearchParams(data).toString();
 	fetchMock.mockResolvedValueOnce({
 		ok: status >= 200 && status < 300,
@@ -81,8 +74,7 @@ export function mockOAuth2Flow(apiData: unknown, apiStatus = 200) {
 		status: 200,
 		statusText: "OK",
 		headers: new Headers({ "Content-Type": "application/json" }),
-		text: async () =>
-			JSON.stringify({ access_token: "test_oauth2_token", expires_in: 86400 }),
+		text: async () => JSON.stringify({ access_token: "test_oauth2_token", expires_in: 86400 }),
 		json: async () => ({
 			access_token: "test_oauth2_token",
 			expires_in: 86400,
@@ -103,11 +95,7 @@ export function mockOAuth2Flow(apiData: unknown, apiStatus = 200) {
 /**
  * Mock OAuth 2.0 token error
  */
-export function mockOAuth2Error(
-	status: number,
-	message: string,
-	data?: unknown,
-) {
+export function mockOAuth2Error(status: number, message: string, data?: unknown) {
 	fetchMock.mockResolvedValueOnce({
 		ok: false,
 		status,

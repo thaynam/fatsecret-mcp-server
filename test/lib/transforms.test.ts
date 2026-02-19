@@ -9,6 +9,8 @@ import {
 	dateToFatSecretFormat,
 	normalizeMealType,
 	parseResponse,
+	truncate,
+	escapeHtml,
 } from "../../src/lib/transforms.js";
 
 describe("Date Transforms", () => {
@@ -36,7 +38,6 @@ describe("Date Transforms", () => {
 			expect(Math.abs(result - expected)).toBeLessThanOrEqual(1);
 		});
 	});
-
 });
 
 describe("Meal Type Normalization", () => {
@@ -75,5 +76,36 @@ describe("Response Parsing", () => {
 				oauth_token_secret: "xyz789",
 			});
 		});
+	});
+});
+
+describe("truncate", () => {
+	it("should return short strings unchanged", () => {
+		expect(truncate("hello", 200)).toBe("hello");
+	});
+
+	it("should truncate long strings with ellipsis", () => {
+		const long = "a".repeat(300);
+		const result = truncate(long, 200);
+		expect(result).toBe(`${"a".repeat(200)}...`);
+	});
+
+	it("should handle exact-length strings", () => {
+		const exact = "a".repeat(200);
+		expect(truncate(exact, 200)).toBe(exact);
+	});
+});
+
+describe("escapeHtml", () => {
+	it("should escape all 5 HTML special characters", () => {
+		expect(escapeHtml("&<>\"'")).toBe("&amp;&lt;&gt;&quot;&#39;");
+	});
+
+	it("should return empty string unchanged", () => {
+		expect(escapeHtml("")).toBe("");
+	});
+
+	it("should leave safe strings unchanged", () => {
+		expect(escapeHtml("hello world")).toBe("hello world");
 	});
 });

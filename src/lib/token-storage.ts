@@ -7,12 +7,7 @@
 
 import type { SessionData, OAuthState } from "./schemas.js";
 import { safeLogError } from "./errors.js";
-
-// Session expiration: 30 days in seconds
-const SESSION_EXPIRATION = 30 * 24 * 60 * 60;
-
-// OAuth state expiration: 10 minutes in seconds (for temporary state during OAuth flow)
-const OAUTH_STATE_EXPIRATION = 10 * 60;
+import { SESSION_TTL_SECONDS, OAUTH_STATE_TTL_SECONDS } from "./constants.js";
 
 /**
  * Converts a hex string to a Uint8Array
@@ -35,10 +30,7 @@ function hexToBytes(hex: string): Uint8Array {
  * @param encryptionKeyHex - The encryption key as a hex string (64 chars / 32 bytes)
  * @returns Base64-encoded encrypted data with IV prepended
  */
-export async function encryptData(
-	data: string,
-	encryptionKeyHex: string,
-): Promise<string> {
+export async function encryptData(data: string, encryptionKeyHex: string): Promise<string> {
 	const keyBytes = hexToBytes(encryptionKeyHex);
 
 	const cryptoKey = await crypto.subtle.importKey(
@@ -55,11 +47,7 @@ export async function encryptData(
 	const encoder = new TextEncoder();
 	const dataBytes = encoder.encode(data);
 
-	const encrypted = await crypto.subtle.encrypt(
-		{ name: "AES-GCM", iv },
-		cryptoKey,
-		dataBytes,
-	);
+	const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, dataBytes);
 
 	// Combine IV + encrypted data
 	const combined = new Uint8Array(iv.length + encrypted.byteLength);
@@ -90,18 +78,12 @@ export async function decryptData(
 		["decrypt"],
 	);
 
-	const combined = Uint8Array.from(atob(encryptedBase64), (c) =>
-		c.charCodeAt(0),
-	);
+	const combined = Uint8Array.from(atob(encryptedBase64), (c) => c.charCodeAt(0));
 
 	const iv = combined.slice(0, 12);
 	const encrypted = combined.slice(12);
 
-	const decrypted = await crypto.subtle.decrypt(
-		{ name: "AES-GCM", iv },
-		cryptoKey,
-		encrypted,
-	);
+	const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, cryptoKey, encrypted);
 
 	const decoder = new TextDecoder();
 	return decoder.decode(decrypted);
@@ -112,10 +94,7 @@ export async function decryptData(
  * Prevents token enumeration if KV listing access is compromised.
  */
 export async function kvKeyHash(value: string): Promise<string> {
-	const hash = await crypto.subtle.digest(
-		"SHA-256",
-		new TextEncoder().encode(value),
-	);
+	const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
 	return Array.from(new Uint8Array(hash))
 		.map((b) => b.toString(16).padStart(2, "0"))
 		.join("");
@@ -145,12 +124,9 @@ export async function storeSession(
 	sessionToken: string,
 	sessionData: SessionData,
 ): Promise<void> {
-	const encrypted = await encryptData(
-		JSON.stringify(sessionData),
-		encryptionKey,
-	);
+	const encrypted = await encryptData(JSON.stringify(sessionData), encryptionKey);
 	const kvKey = `session:${await kvKeyHash(sessionToken)}`;
-	await kv.put(kvKey, encrypted, { expirationTtl: SESSION_EXPIRATION });
+	await kv.put(kvKey, encrypted, { expirationTtl: SESSION_TTL_SECONDS });
 }
 
 /**
@@ -188,10 +164,7 @@ export async function getSession(
  * @param kv - Cloudflare KV namespace
  * @param sessionToken - The session token
  */
-export async function deleteSession(
-	kv: KVNamespace,
-	sessionToken: string,
-): Promise<void> {
+export async function deleteSession(kv: KVNamespace, sessionToken: string): Promise<void> {
 	const kvKey = `session:${await kvKeyHash(sessionToken)}`;
 	await kv.delete(kvKey);
 }
@@ -210,12 +183,9 @@ export async function storeOAuthState(
 	state: string,
 	oauthState: OAuthState,
 ): Promise<void> {
-	const encrypted = await encryptData(
-		JSON.stringify(oauthState),
-		encryptionKey,
-	);
+	const encrypted = await encryptData(JSON.stringify(oauthState), encryptionKey);
 	const kvKey = `oauth_state:${await kvKeyHash(state)}`;
-	await kv.put(kvKey, encrypted, { expirationTtl: OAUTH_STATE_EXPIRATION });
+	await kv.put(kvKey, encrypted, { expirationTtl: OAUTH_STATE_TTL_SECONDS });
 }
 
 /**
@@ -240,10 +210,10 @@ export async function getOAuthState(
 
 	try {
 		const decrypted = await decryptData(encrypted, encryptionKey);
-		const state = JSON.parse(decrypted) as OAuthState;
+		const oauthState = JSON.parse(decrypted) as OAuthState;
 		// Delete only after successful decryption (single use)
 		await kv.delete(kvKey);
-		return state;
+		return oauthState;
 	} catch (error) {
 		safeLogError("Failed to decrypt OAuth state", error);
 		return null;

@@ -16,7 +16,8 @@ import {
 	getSession,
 	maskSecret,
 } from "../lib/token-storage.js";
-import { escapeHtml, getSessionCookie } from "../lib/transforms.js";
+import { getSessionCookie } from "../lib/transforms.js";
+import { renderAuthorizePage } from "../views/authorize.js";
 import {
 	storeOAuth2Client,
 	getOAuth2Client,
@@ -26,8 +27,15 @@ import {
 import { FatSecretClient } from "../lib/client.js";
 import { safeLogError } from "../lib/errors.js";
 import type { SessionData } from "../lib/schemas.js";
+import type { AppEnv } from "../app.js";
+import {
+	SESSION_TTL_SECONDS,
+	MAX_CREDENTIAL_LENGTH,
+	MAX_REDIRECT_URI_LENGTH,
+	MAX_REDIRECT_URIS,
+} from "../lib/constants.js";
 
-const oauth2Routes = new Hono<{ Bindings: Env }>();
+const oauth2Routes = new Hono<AppEnv>();
 
 // ============================================================================
 // Helpers
@@ -43,14 +51,8 @@ async function sha256Hex(input: string): Promise<string> {
 }
 
 /** Verify PKCE code_verifier against stored code_challenge (S256) with constant-time comparison */
-async function verifyPKCE(
-	codeVerifier: string,
-	codeChallenge: string,
-): Promise<boolean> {
-	const digest = await crypto.subtle.digest(
-		"SHA-256",
-		new TextEncoder().encode(codeVerifier),
-	);
+async function verifyPKCE(codeVerifier: string, codeChallenge: string): Promise<boolean> {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
 	const computed = btoa(String.fromCharCode(...new Uint8Array(digest)))
 		.replace(/\+/g, "-")
 		.replace(/\//g, "_")
@@ -116,11 +118,7 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 		const body = await c.req.json();
 		const redirectUris: string[] = body.redirect_uris;
 
-		if (
-			!redirectUris ||
-			!Array.isArray(redirectUris) ||
-			redirectUris.length === 0
-		) {
+		if (!redirectUris || !Array.isArray(redirectUris) || redirectUris.length === 0) {
 			return c.json(
 				{
 					error: "invalid_client_metadata",
@@ -130,11 +128,11 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 			);
 		}
 
-		if (redirectUris.length > 10) {
+		if (redirectUris.length > MAX_REDIRECT_URIS) {
 			return c.json(
 				{
 					error: "invalid_client_metadata",
-					error_description: "Too many redirect URIs (max 10)",
+					error_description: `Too many redirect URIs (max ${MAX_REDIRECT_URIS})`,
 				},
 				400,
 			);
@@ -142,7 +140,7 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 
 		// Validate redirect URIs are HTTPS (allow localhost for development)
 		for (const uri of redirectUris) {
-			if (typeof uri !== "string" || uri.length > 2000) {
+			if (typeof uri !== "string" || uri.length > MAX_REDIRECT_URI_LENGTH) {
 				return c.json(
 					{
 						error: "invalid_client_metadata",
@@ -179,9 +177,7 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 
 		// Validate client_name length
 		const clientName =
-			typeof body.client_name === "string"
-				? body.client_name.slice(0, 200)
-				: undefined;
+			typeof body.client_name === "string" ? body.client_name.slice(0, 200) : undefined;
 
 		// Generate client credentials
 		const clientId = generateSessionToken();
@@ -189,20 +185,15 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 		const clientSecretHash = await sha256Hex(clientSecret);
 
 		// Store client (hashed secret)
-		await storeOAuth2Client(
-			c.env.OAUTH_KV,
-			c.env.COOKIE_ENCRYPTION_KEY,
+		await storeOAuth2Client(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, clientId, {
 			clientId,
-			{
-				clientId,
-				clientSecretHash,
-				redirectUris,
-				clientName,
-				grantTypes: ["authorization_code"],
-				responseTypes: ["code"],
-				createdAt: Date.now(),
-			},
-		);
+			clientSecretHash,
+			redirectUris,
+			clientName,
+			grantTypes: ["authorization_code"],
+			responseTypes: ["code"],
+			createdAt: Date.now(),
+		});
 
 		// Return client credentials (plaintext secret only returned once)
 		c.header("Cache-Control", "no-store");
@@ -221,128 +212,13 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 		);
 	} catch (error) {
 		safeLogError("DCR error", error);
-		return c.json(
-			{ error: "server_error", error_description: "Registration failed" },
-			500,
-		);
+		return c.json({ error: "server_error", error_description: "Registration failed" }, 500);
 	}
 });
 
 // ============================================================================
 // Authorization Endpoint
 // ============================================================================
-
-/** Render the authorization page HTML */
-function renderAuthorizePage(params: {
-	clientName?: string;
-	hasSession: boolean;
-	maskedClientId?: string;
-	error?: string;
-	// OAuth params to carry through as hidden fields
-	clientId: string;
-	redirectUri: string;
-	state: string;
-	codeChallenge: string;
-	codeChallengeMethod: string;
-	scope: string;
-}): string {
-	const hiddenFields = `
-		<input type="hidden" name="client_id" value="${escapeHtml(params.clientId)}">
-		<input type="hidden" name="redirect_uri" value="${escapeHtml(params.redirectUri)}">
-		<input type="hidden" name="state" value="${escapeHtml(params.state)}">
-		<input type="hidden" name="code_challenge" value="${escapeHtml(params.codeChallenge)}">
-		<input type="hidden" name="code_challenge_method" value="${escapeHtml(params.codeChallengeMethod)}">
-		<input type="hidden" name="scope" value="${escapeHtml(params.scope)}">
-	`;
-
-	const errorHtml = params.error
-		? `<div style="background:#fee;border:1px solid #fcc;padding:12px;border-radius:8px;margin-bottom:20px;color:#c33;">${escapeHtml(params.error)}</div>`
-		: "";
-
-	const appName = params.clientName || "An application";
-
-	if (params.hasSession) {
-		// Consent screen for existing session
-		return `<!DOCTYPE html>
-<html><head><title>Authorize - FatSecret MCP</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-	body{font-family:system-ui,sans-serif;max-width:480px;margin:40px auto;padding:20px;background:#f5f5f5;}
-	.card{background:white;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
-	h1{font-size:20px;margin:0 0 8px;}
-	.subtitle{color:#666;font-size:14px;margin-bottom:20px;}
-	.permissions{background:#f8f9fa;border-radius:8px;padding:16px;margin:16px 0;}
-	.permissions li{margin:6px 0;font-size:14px;}
-	.identity{font-size:13px;color:#888;margin:16px 0;}
-	.btn-group{display:flex;gap:10px;margin-top:20px;}
-	.btn{flex:1;padding:12px;border:none;border-radius:8px;font-size:15px;cursor:pointer;font-weight:500;}
-	.btn-allow{background:#22c55e;color:white;}
-	.btn-allow:hover{background:#16a34a;}
-	.btn-deny{background:#e5e7eb;color:#374151;}
-	.btn-deny:hover{background:#d1d5db;}
-</style></head><body>
-<div class="card">
-	<h1>Authorize Access</h1>
-	<p class="subtitle"><strong>${escapeHtml(appName)}</strong> wants to access your FatSecret nutrition data.</p>
-	${errorHtml}
-	<div class="permissions">
-		<strong style="font-size:14px;">This will allow:</strong>
-		<ul>
-			<li>Search foods and recipes</li>
-			<li>Read your food diary</li>
-			<li>Add food entries</li>
-			<li>View weight data</li>
-		</ul>
-	</div>
-	<div class="identity">Connected as: <code>${params.maskedClientId || "unknown"}</code></div>
-	<form method="POST" action="/oauth2/authorize">
-		${hiddenFields}
-		<input type="hidden" name="action" value="allow">
-		<div class="btn-group">
-			<button type="submit" class="btn btn-allow">Allow</button>
-			<button type="submit" name="action" value="deny" class="btn btn-deny">Deny</button>
-		</div>
-	</form>
-</div>
-</body></html>`;
-	}
-
-	// Credential entry form for new users
-	return `<!DOCTYPE html>
-<html><head><title>Connect & Authorize - FatSecret MCP</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-	body{font-family:system-ui,sans-serif;max-width:480px;margin:40px auto;padding:20px;background:#f5f5f5;}
-	.card{background:white;border-radius:12px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
-	h1{font-size:20px;margin:0 0 8px;}
-	.subtitle{color:#666;font-size:14px;margin-bottom:20px;}
-	label{display:block;font-size:14px;font-weight:500;margin:14px 0 4px;}
-	.help{font-size:12px;color:#888;margin:2px 0 6px;}
-	input[type="text"],input[type="password"]{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;}
-	input:focus{outline:none;border-color:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,0.15);}
-	.btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:15px;cursor:pointer;font-weight:500;margin-top:20px;background:#22c55e;color:white;}
-	.btn:hover{background:#16a34a;}
-</style></head><body>
-<div class="card">
-	<h1>Connect & Authorize</h1>
-	<p class="subtitle"><strong>${escapeHtml(appName)}</strong> wants to access your FatSecret nutrition data. Enter your API credentials to connect.</p>
-	${errorHtml}
-	<form method="POST" action="/oauth2/authorize">
-		${hiddenFields}
-		<input type="hidden" name="action" value="credentials">
-		<label>Client ID</label>
-		<div class="help">From <a href="https://platform.fatsecret.com/api/" target="_blank">FatSecret Platform API</a></div>
-		<input type="text" name="fs_client_id" placeholder="Your Client ID" required>
-		<label>Client Secret <span style="font-weight:normal;color:#888;">(OAuth 2.0)</span></label>
-		<input type="password" name="fs_client_secret" placeholder="Your Client Secret" required>
-		<label>Consumer Secret <span style="font-weight:normal;color:#888;">(OAuth 1.0 REST API)</span></label>
-		<div class="help">Found under "REST API OAuth 1.0 Credentials" on the developer portal</div>
-		<input type="password" name="fs_consumer_secret" placeholder="Your Consumer Secret" required>
-		<button type="submit" class="btn">Connect & Authorize</button>
-	</form>
-</div>
-</body></html>`;
-}
 
 /**
  * GET /oauth2/authorize
@@ -392,16 +268,9 @@ oauth2Routes.get("/oauth2/authorize", async (c) => {
 	}
 
 	// Verify client exists
-	const client = await getOAuth2Client(
-		c.env.OAUTH_KV,
-		c.env.COOKIE_ENCRYPTION_KEY,
-		client_id,
-	);
+	const client = await getOAuth2Client(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, client_id);
 	if (!client) {
-		return c.json(
-			{ error: "invalid_client", error_description: "Unknown client_id" },
-			400,
-		);
+		return c.json({ error: "invalid_client", error_description: "Unknown client_id" }, 400);
 	}
 
 	// Verify redirect_uri matches registered URIs
@@ -419,11 +288,7 @@ oauth2Routes.get("/oauth2/authorize", async (c) => {
 	const sessionToken = getSessionCookie(c.req.header("Cookie"));
 	let session: SessionData | null = null;
 	if (sessionToken) {
-		session = await getSession(
-			c.env.OAUTH_KV,
-			c.env.COOKIE_ENCRYPTION_KEY,
-			sessionToken,
-		);
+		session = await getSession(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, sessionToken);
 	}
 
 	const hasSession = !!(session?.clientId && session?.accessToken);
@@ -433,9 +298,7 @@ oauth2Routes.get("/oauth2/authorize", async (c) => {
 		renderAuthorizePage({
 			clientName: client.clientName,
 			hasSession,
-			maskedClientId: session?.clientId
-				? maskSecret(session.clientId)
-				: undefined,
+			maskedClientId: session?.clientId ? maskSecret(session.clientId) : undefined,
 			clientId: client_id,
 			redirectUri: redirect_uri,
 			state,
@@ -461,11 +324,7 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 	const scope = (body.scope as string) || "mcp";
 
 	// Verify client
-	const client = await getOAuth2Client(
-		c.env.OAUTH_KV,
-		c.env.COOKIE_ENCRYPTION_KEY,
-		clientId,
-	);
+	const client = await getOAuth2Client(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, clientId);
 	if (!client || !client.redirectUris.includes(redirectUri)) {
 		return c.json({ error: "invalid_client" }, 400);
 	}
@@ -498,11 +357,7 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 			);
 		}
 
-		const session = await getSession(
-			c.env.OAUTH_KV,
-			c.env.COOKIE_ENCRYPTION_KEY,
-			sessionToken,
-		);
+		const session = await getSession(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, sessionToken);
 
 		if (!session?.accessToken) {
 			return c.html(
@@ -522,19 +377,14 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 
 		// Issue authorization code
 		const code = generateSessionToken();
-		await storeAuthorizationCode(
-			c.env.OAUTH_KV,
-			c.env.COOKIE_ENCRYPTION_KEY,
-			code,
-			{
-				clientId,
-				redirectUri,
-				codeChallenge,
-				sessionToken,
-				scope,
-				createdAt: Date.now(),
-			},
-		);
+		await storeAuthorizationCode(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, code, {
+			clientId,
+			redirectUri,
+			codeChallenge,
+			sessionToken,
+			scope,
+			createdAt: Date.now(),
+		});
 
 		const callbackUrl = new URL(redirectUri);
 		callbackUrl.searchParams.set("code", code);
@@ -565,7 +415,9 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 		}
 
 		if (
-			fsClientId.length > 500 || fsClientSecret.length > 500 || fsConsumerSecret.length > 500
+			fsClientId.length > MAX_CREDENTIAL_LENGTH ||
+			fsClientSecret.length > MAX_CREDENTIAL_LENGTH ||
+			fsConsumerSecret.length > MAX_CREDENTIAL_LENGTH
 		) {
 			return c.html(
 				renderAuthorizePage({
@@ -595,8 +447,7 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 					renderAuthorizePage({
 						clientName: client.clientName,
 						hasSession: false,
-						error:
-							"Invalid FatSecret credentials. Please check your Client ID and Client Secret.",
+						error: "Invalid FatSecret credentials. Please check your Client ID and Client Secret.",
 						clientId,
 						redirectUri,
 						state,
@@ -632,24 +483,19 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 
 			// Issue authorization code
 			const code = generateSessionToken();
-			await storeAuthorizationCode(
-				c.env.OAUTH_KV,
-				c.env.COOKIE_ENCRYPTION_KEY,
-				code,
-				{
-					clientId,
-					redirectUri,
-					codeChallenge,
-					sessionToken,
-					scope,
-					createdAt: Date.now(),
-				},
-			);
+			await storeAuthorizationCode(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, code, {
+				clientId,
+				redirectUri,
+				codeChallenge,
+				sessionToken,
+				scope,
+				createdAt: Date.now(),
+			});
 
 			// Set session cookie for future use
 			c.header(
 				"Set-Cookie",
-				`fatsecret_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${30 * 24 * 60 * 60}`,
+				`fatsecret_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${SESSION_TTL_SECONDS}`,
 			);
 
 			const callbackUrl = new URL(redirectUri);
@@ -715,26 +561,16 @@ oauth2Routes.post("/oauth2/token", async (c) => {
 	}
 
 	// Verify client credentials
-	const client = await getOAuth2Client(
-		c.env.OAUTH_KV,
-		c.env.COOKIE_ENCRYPTION_KEY,
-		clientId,
-	);
+	const client = await getOAuth2Client(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, clientId);
 	if (!client) {
-		return c.json(
-			{ error: "invalid_client", error_description: "Unknown client" },
-			401,
-		);
+		return c.json({ error: "invalid_client", error_description: "Unknown client" }, 401);
 	}
 
 	const secretHash = await sha256Hex(clientSecret);
 	const encoder = new TextEncoder();
 	const hashA = encoder.encode(secretHash);
 	const hashB = encoder.encode(client.clientSecretHash);
-	if (
-		hashA.byteLength !== hashB.byteLength ||
-		!crypto.subtle.timingSafeEqual(hashA, hashB)
-	) {
+	if (hashA.byteLength !== hashB.byteLength || !crypto.subtle.timingSafeEqual(hashA, hashB)) {
 		return c.json(
 			{
 				error: "invalid_client",
@@ -745,11 +581,7 @@ oauth2Routes.post("/oauth2/token", async (c) => {
 	}
 
 	// Retrieve and consume authorization code (single-use)
-	const codeData = await getAuthorizationCode(
-		c.env.OAUTH_KV,
-		c.env.COOKIE_ENCRYPTION_KEY,
-		code,
-	);
+	const codeData = await getAuthorizationCode(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, code);
 	if (!codeData) {
 		return c.json(
 			{
@@ -762,16 +594,10 @@ oauth2Routes.post("/oauth2/token", async (c) => {
 
 	// Verify client_id and redirect_uri match
 	if (codeData.clientId !== clientId) {
-		return c.json(
-			{ error: "invalid_grant", error_description: "Client mismatch" },
-			400,
-		);
+		return c.json({ error: "invalid_grant", error_description: "Client mismatch" }, 400);
 	}
 	if (!redirectUri || codeData.redirectUri !== redirectUri) {
-		return c.json(
-			{ error: "invalid_grant", error_description: "redirect_uri mismatch" },
-			400,
-		);
+		return c.json({ error: "invalid_grant", error_description: "redirect_uri mismatch" }, 400);
 	}
 
 	// PKCE verification
