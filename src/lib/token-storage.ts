@@ -6,6 +6,7 @@
  */
 
 import type { SessionData, OAuthState } from "./schemas.js";
+import { safeLogError } from "./errors.js";
 
 // Session expiration: 30 days in seconds
 const SESSION_EXPIRATION = 30 * 24 * 60 * 60;
@@ -17,6 +18,9 @@ const OAUTH_STATE_EXPIRATION = 10 * 60;
  * Converts a hex string to a Uint8Array
  */
 function hexToBytes(hex: string): Uint8Array {
+	if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+		throw new Error("Encryption key must be exactly 64 hex characters (32 bytes)");
+	}
 	const bytes = new Uint8Array(hex.length / 2);
 	for (let i = 0; i < hex.length; i += 2) {
 		bytes[i / 2] = Number.parseInt(hex.slice(i, i + 2), 16);
@@ -104,6 +108,20 @@ export async function decryptData(
 }
 
 /**
+ * Hash a value with SHA-256 for use as a KV key.
+ * Prevents token enumeration if KV listing access is compromised.
+ */
+export async function kvKeyHash(value: string): Promise<string> {
+	const hash = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(value),
+	);
+	return Array.from(new Uint8Array(hash))
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
+}
+
+/**
  * Generate a random session token
  */
 export function generateSessionToken(): string {
@@ -131,7 +149,7 @@ export async function storeSession(
 		JSON.stringify(sessionData),
 		encryptionKey,
 	);
-	const kvKey = `session:${sessionToken}`;
+	const kvKey = `session:${await kvKeyHash(sessionToken)}`;
 	await kv.put(kvKey, encrypted, { expirationTtl: SESSION_EXPIRATION });
 }
 
@@ -148,7 +166,7 @@ export async function getSession(
 	encryptionKey: string,
 	sessionToken: string,
 ): Promise<SessionData | null> {
-	const kvKey = `session:${sessionToken}`;
+	const kvKey = `session:${await kvKeyHash(sessionToken)}`;
 	const encrypted = await kv.get(kvKey);
 
 	if (!encrypted) {
@@ -158,8 +176,8 @@ export async function getSession(
 	try {
 		const decrypted = await decryptData(encrypted, encryptionKey);
 		return JSON.parse(decrypted) as SessionData;
-	} catch {
-		console.error("Failed to decrypt session data");
+	} catch (error) {
+		safeLogError("Failed to decrypt session data", error);
 		return null;
 	}
 }
@@ -174,7 +192,7 @@ export async function deleteSession(
 	kv: KVNamespace,
 	sessionToken: string,
 ): Promise<void> {
-	const kvKey = `session:${sessionToken}`;
+	const kvKey = `session:${await kvKeyHash(sessionToken)}`;
 	await kv.delete(kvKey);
 }
 
@@ -196,7 +214,7 @@ export async function storeOAuthState(
 		JSON.stringify(oauthState),
 		encryptionKey,
 	);
-	const kvKey = `oauth_state:${state}`;
+	const kvKey = `oauth_state:${await kvKeyHash(state)}`;
 	await kv.put(kvKey, encrypted, { expirationTtl: OAUTH_STATE_EXPIRATION });
 }
 
@@ -213,7 +231,7 @@ export async function getOAuthState(
 	encryptionKey: string,
 	state: string,
 ): Promise<OAuthState | null> {
-	const kvKey = `oauth_state:${state}`;
+	const kvKey = `oauth_state:${await kvKeyHash(state)}`;
 	const encrypted = await kv.get(kvKey);
 
 	if (!encrypted) {
@@ -226,8 +244,8 @@ export async function getOAuthState(
 		// Delete only after successful decryption (single use)
 		await kv.delete(kvKey);
 		return state;
-	} catch {
-		console.error("Failed to decrypt OAuth state");
+	} catch (error) {
+		safeLogError("Failed to decrypt OAuth state", error);
 		return null;
 	}
 }

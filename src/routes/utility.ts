@@ -323,6 +323,14 @@ utilityRoutes.post("/api/save-credentials", async (c) => {
 			return c.json({ error: "Client ID and Client Secret are required" }, 400);
 		}
 
+		if (
+			typeof clientId !== "string" || clientId.length > 500 ||
+			typeof clientSecret !== "string" || clientSecret.length > 500 ||
+			(consumerSecret && (typeof consumerSecret !== "string" || consumerSecret.length > 500))
+		) {
+			return c.json({ error: "Invalid input" }, 400);
+		}
+
 		const client = new FatSecretClient({ clientId, clientSecret });
 		if (!(await client.validateCredentials())) {
 			return c.json(
@@ -364,7 +372,7 @@ utilityRoutes.delete("/api/delete-credentials", async (c) => {
 	const sessionToken = getSessionCookie(c.req.header("Cookie"));
 	if (sessionToken) await deleteSession(c.env.OAUTH_KV, sessionToken);
 	const response = c.json({ success: true });
-	response.headers.set("Set-Cookie", "fatsecret_session=; Path=/; Max-Age=0");
+	response.headers.set("Set-Cookie", "fatsecret_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
 	return response;
 });
 

@@ -37,6 +37,16 @@ export const bearerAuth = createMiddleware<{
 
 	const token = authHeader.substring(7); // Remove "Bearer " prefix
 
+	if (token.length > 200) {
+		return c.json(
+			{ error: "unauthorized", message: "Invalid token" },
+			401,
+			{
+				"WWW-Authenticate": `Bearer realm="${origin}/mcp", resource_metadata="${resourceMetadataUrl}", error="invalid_token"`,
+			},
+		);
+	}
+
 	// Load session from encrypted KV
 	const sessionData = await getSession(
 		c.env.OAUTH_KV,

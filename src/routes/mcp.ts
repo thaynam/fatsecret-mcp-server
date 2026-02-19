@@ -37,25 +37,41 @@ export function createMcpRoutes(mcpHandlers: McpHandlers) {
 
 	// Streamable HTTP endpoint (matches /mcp and /mcp/*)
 	mcpRoutes.all("/mcp/*", bearerAuth, async (c) => {
-		const ctx = withProps(c.executionCtx, c.get("sessionToken")!, c.req.url);
+		const sessionToken = c.get("sessionToken");
+		if (!sessionToken) {
+			return c.json({ error: "unauthorized" }, 401);
+		}
+		const ctx = withProps(c.executionCtx, sessionToken, c.req.url);
 		return await mcpHandlers.streamableHTTP.fetch(c.req.raw, c.env, ctx);
 	});
 
 	// Also handle /mcp without trailing path for initialization
 	mcpRoutes.all("/mcp", bearerAuth, async (c) => {
-		const ctx = withProps(c.executionCtx, c.get("sessionToken")!, c.req.url);
+		const sessionToken = c.get("sessionToken");
+		if (!sessionToken) {
+			return c.json({ error: "unauthorized" }, 401);
+		}
+		const ctx = withProps(c.executionCtx, sessionToken, c.req.url);
 		return await mcpHandlers.streamableHTTP.fetch(c.req.raw, c.env, ctx);
 	});
 
 	// Legacy SSE endpoint for backward compatibility (matches /sse and /sse/*)
 	mcpRoutes.all("/sse/*", bearerAuth, async (c) => {
-		const ctx = withProps(c.executionCtx, c.get("sessionToken")!, c.req.url);
+		const sessionToken = c.get("sessionToken");
+		if (!sessionToken) {
+			return c.json({ error: "unauthorized" }, 401);
+		}
+		const ctx = withProps(c.executionCtx, sessionToken, c.req.url);
 		return await mcpHandlers.sse.fetch(c.req.raw, c.env, ctx);
 	});
 
 	// Also handle /sse without trailing path
 	mcpRoutes.all("/sse", bearerAuth, async (c) => {
-		const ctx = withProps(c.executionCtx, c.get("sessionToken")!, c.req.url);
+		const sessionToken = c.get("sessionToken");
+		if (!sessionToken) {
+			return c.json({ error: "unauthorized" }, 401);
+		}
+		const ctx = withProps(c.executionCtx, sessionToken, c.req.url);
 		return await mcpHandlers.sse.fetch(c.req.raw, c.env, ctx);
 	});
 

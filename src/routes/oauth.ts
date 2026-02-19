@@ -207,12 +207,29 @@ oauthRoutes.post("/oauth/setup", async (c) => {
 			);
 		}
 
+		if (
+			typeof clientId !== "string" || clientId.length > 500 ||
+			typeof clientSecret !== "string" || clientSecret.length > 500 ||
+			(callbackUrl && (typeof callbackUrl !== "string" || callbackUrl.length > 2000))
+		) {
+			return c.json({ error: "invalid_input", message: "Invalid input" }, 400);
+		}
+
 		// Create client with provided credentials
 		const client = new FatSecretClient({ clientId, clientSecret });
 
 		// Get request token from FatSecret
-		const callback =
-			callbackUrl || `${new URL(c.req.url).origin}/oauth/callback`;
+		const origin = new URL(c.req.url).origin;
+		let callback = `${origin}/oauth/callback`;
+		if (callbackUrl) {
+			try {
+				if (new URL(callbackUrl).origin === origin) {
+					callback = callbackUrl;
+				}
+			} catch {
+				// Malformed URL — use default callback
+			}
+		}
 		const tokenResponse = await client.getRequestToken(callback);
 
 		// Generate a session token and store credentials first
@@ -283,6 +300,10 @@ oauthRoutes.get("/oauth/callback", async (c) => {
 			c.req.query("state") ||
 			c.req.header("Cookie")?.match(/oauth_state=([^;]+)/)?.[1];
 
+		if (oauth_verifier && oauth_verifier.length > 200) {
+			return c.json({ error: "invalid_input", message: "Invalid input" }, 400);
+		}
+
 		if (!oauth_verifier) {
 			return c.html(`
                 <!DOCTYPE html>
@@ -318,6 +339,10 @@ oauthRoutes.get("/oauth/callback", async (c) => {
 				},
 				400,
 			);
+		}
+
+		if (state.length > 200) {
+			return c.json({ error: "invalid_input", message: "Invalid input" }, 400);
 		}
 
 		// Retrieve OAuth state
@@ -385,6 +410,9 @@ oauthRoutes.get("/oauth/callback", async (c) => {
 			sessionData,
 		);
 
+		// Clear the oauth_state cookie now that it's been consumed
+		c.header("Set-Cookie", "oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
+
 		// Check if this came from the cookie-based flow (redirect to setup page)
 		const isWebFlow = c.req.header("Cookie")?.includes("fatsecret_session=");
 
@@ -410,7 +438,7 @@ oauthRoutes.get("/oauth/callback", async (c) => {
                 <h1>Authentication Successful!</h1>
                 <p>Your FatSecret account is now connected. Use this token as a Bearer token in your MCP client:</p>
                 <div class="token" id="token">${escapeHtml(sessionToken)}</div>
-                <button class="copy-btn" onclick="navigator.clipboard.writeText('${escapeHtml(sessionToken)}')">Copy Token</button>
+                <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('token').textContent)">Copy Token</button>
                 <h2>MCP Configuration</h2>
                 <p>Add this to your MCP client configuration:</p>
                 <pre style="background: #f0f0f0; padding: 15px; border-radius: 5px; overflow-x: auto;">
@@ -467,6 +495,13 @@ oauthRoutes.post("/oauth/complete", async (c) => {
 				},
 				400,
 			);
+		}
+
+		if (
+			typeof state !== "string" || state.length > 200 ||
+			typeof verifier !== "string" || verifier.length > 200
+		) {
+			return c.json({ error: "invalid_input", message: "Invalid input" }, 400);
 		}
 
 		// Retrieve OAuth state

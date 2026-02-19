@@ -16,6 +16,9 @@ export function dateToFatSecretFormat(dateString?: string): string {
 	if (dateString) {
 		// Parse as UTC to avoid timezone offset issues
 		utcMs = new Date(`${dateString}T00:00:00Z`).getTime();
+		if (Number.isNaN(utcMs)) {
+			throw new Error(`Invalid date: ${dateString}`);
+		}
 	} else {
 		// "Today" in UTC
 		const now = new Date();
@@ -69,6 +72,10 @@ export function parseResponse(text: string): unknown {
 		const result: Record<string, string> = {};
 		for (const [key, value] of params) {
 			result[key] = value;
+		}
+		const keys = Object.keys(result);
+		if (keys.length === 0 || (keys.length === 1 && result[keys[0]] === "")) {
+			return { raw: text.length > 500 ? text.substring(0, 500) : text };
 		}
 		return result;
 	}

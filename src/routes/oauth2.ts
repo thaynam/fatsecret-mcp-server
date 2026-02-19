@@ -130,8 +130,27 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 			);
 		}
 
+		if (redirectUris.length > 10) {
+			return c.json(
+				{
+					error: "invalid_client_metadata",
+					error_description: "Too many redirect URIs (max 10)",
+				},
+				400,
+			);
+		}
+
 		// Validate redirect URIs are HTTPS (allow localhost for development)
 		for (const uri of redirectUris) {
+			if (typeof uri !== "string" || uri.length > 2000) {
+				return c.json(
+					{
+						error: "invalid_client_metadata",
+						error_description: "redirect_uri too long",
+					},
+					400,
+				);
+			}
 			try {
 				const parsed = new URL(uri);
 				if (
@@ -179,8 +198,8 @@ oauth2Routes.post("/oauth2/register", async (c) => {
 				clientSecretHash,
 				redirectUris,
 				clientName,
-				grantTypes: body.grant_types || ["authorization_code"],
-				responseTypes: body.response_types || ["code"],
+				grantTypes: ["authorization_code"],
+				responseTypes: ["code"],
 				createdAt: Date.now(),
 			},
 		);
@@ -545,6 +564,24 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 			);
 		}
 
+		if (
+			fsClientId.length > 500 || fsClientSecret.length > 500 || fsConsumerSecret.length > 500
+		) {
+			return c.html(
+				renderAuthorizePage({
+					clientName: client.clientName,
+					hasSession: false,
+					error: "Credential values are too long.",
+					clientId,
+					redirectUri,
+					state,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+				}),
+			);
+		}
+
 		try {
 			// Validate credentials
 			const fsClient = new FatSecretClient({
@@ -747,6 +784,8 @@ oauth2Routes.post("/oauth2/token", async (c) => {
 	}
 
 	// The session token IS the access token
+	c.header("Cache-Control", "no-store");
+	c.header("Pragma", "no-cache");
 	return c.json({
 		access_token: codeData.sessionToken,
 		token_type: "bearer",

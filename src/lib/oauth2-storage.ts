@@ -5,7 +5,7 @@
  * Follows the same encryption patterns as token-storage.ts.
  */
 
-import { encryptData, decryptData } from "./token-storage.js";
+import { encryptData, decryptData, kvKeyHash } from "./token-storage.js";
 import type {
 	OAuth2ClientData,
 	AuthorizationCodeData,
@@ -27,7 +27,7 @@ export async function storeOAuth2Client(
 		JSON.stringify(clientData),
 		encryptionKey,
 	);
-	await kv.put(`oauth2_client:${clientId}`, encrypted, {
+	await kv.put(`oauth2_client:${await kvKeyHash(clientId)}`, encrypted, {
 		expirationTtl: CLIENT_EXPIRATION,
 	});
 }
@@ -40,7 +40,7 @@ export async function getOAuth2Client(
 	encryptionKey: string,
 	clientId: string,
 ): Promise<OAuth2ClientData | null> {
-	const encrypted = await kv.get(`oauth2_client:${clientId}`);
+	const encrypted = await kv.get(`oauth2_client:${await kvKeyHash(clientId)}`);
 	if (!encrypted) return null;
 	try {
 		const decrypted = await decryptData(encrypted, encryptionKey);
@@ -60,7 +60,7 @@ export async function storeAuthorizationCode(
 	codeData: AuthorizationCodeData,
 ): Promise<void> {
 	const encrypted = await encryptData(JSON.stringify(codeData), encryptionKey);
-	await kv.put(`oauth2_code:${code}`, encrypted, {
+	await kv.put(`oauth2_code:${await kvKeyHash(code)}`, encrypted, {
 		expirationTtl: CODE_EXPIRATION,
 	});
 }
@@ -73,14 +73,15 @@ export async function getAuthorizationCode(
 	encryptionKey: string,
 	code: string,
 ): Promise<AuthorizationCodeData | null> {
-	const kvKey = `oauth2_code:${code}`;
+	const kvKey = `oauth2_code:${await kvKeyHash(code)}`;
 	const encrypted = await kv.get(kvKey);
 	if (!encrypted) return null;
-	// Single-use: delete immediately
-	await kv.delete(kvKey);
 	try {
 		const decrypted = await decryptData(encrypted, encryptionKey);
-		return JSON.parse(decrypted) as AuthorizationCodeData;
+		const data = JSON.parse(decrypted) as AuthorizationCodeData;
+		// Single-use: delete only after successful decryption
+		await kv.delete(kvKey);
+		return data;
 	} catch {
 		return null;
 	}
