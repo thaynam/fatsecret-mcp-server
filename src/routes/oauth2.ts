@@ -14,22 +14,26 @@ import {
 	generateSessionToken,
 	storeSession,
 	getSession,
+	storeOAuthState,
 	maskSecret,
 } from "../lib/token-storage.js";
 import { getSessionCookie } from "../lib/transforms.js";
-import { renderAuthorizePage } from "../views/authorize.js";
+import { renderAuthorizePage, renderConnectionChoice } from "../views/authorize.js";
 import {
 	storeOAuth2Client,
 	getOAuth2Client,
 	storeAuthorizationCode,
 	getAuthorizationCode,
+	storeRefreshToken,
+	getRefreshToken,
 } from "../lib/oauth2-storage.js";
 import { FatSecretClient } from "../lib/client.js";
 import { safeLogError } from "../lib/errors.js";
-import type { SessionData } from "../lib/schemas.js";
+import type { SessionData, OAuthState } from "../lib/schemas.js";
 import type { AppEnv } from "../app.js";
 import {
 	SESSION_TTL_SECONDS,
+	OAUTH_STATE_TTL_SECONDS,
 	MAX_CREDENTIAL_LENGTH,
 	MAX_REDIRECT_URI_LENGTH,
 	MAX_REDIRECT_URIS,
@@ -84,7 +88,7 @@ oauth2Routes.get("/.well-known/oauth-authorization-server", (c) => {
 		token_endpoint: `${origin}/oauth2/token`,
 		registration_endpoint: `${origin}/oauth2/register`,
 		response_types_supported: ["code"],
-		grant_types_supported: ["authorization_code"],
+		grant_types_supported: ["authorization_code", "refresh_token"],
 		token_endpoint_auth_methods_supported: ["client_secret_post"],
 		code_challenge_methods_supported: ["S256"],
 		scopes_supported: ["mcp"],
@@ -392,7 +396,7 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 		return c.redirect(callbackUrl.toString());
 	}
 
-	// Handle credentials (new user)
+	// Handle credentials (new user) — validate and show connection choice
 	if (action === "credentials") {
 		const fsClientId = body.fs_client_id as string;
 		const fsClientSecret = body.fs_client_secret as string;
@@ -458,20 +462,206 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 				);
 			}
 
-			// Create profile via Profile API
-			const profileId = `mcp-${crypto.randomUUID()}`;
-			const profileAuth = await fsClient.profileCreate(profileId);
-
-			// Create session
+			// Save session with credentials (no access token yet)
 			const sessionToken = generateSessionToken();
 			const sessionData: SessionData = {
 				clientId: fsClientId,
 				clientSecret: fsClientSecret,
 				consumerSecret: fsConsumerSecret,
+				createdAt: Date.now(),
+			};
+
+			await storeSession(
+				c.env.OAUTH_KV,
+				c.env.COOKIE_ENCRYPTION_KEY,
+				sessionToken,
+				sessionData,
+			);
+
+			// Set session cookie so subsequent actions can find it
+			c.header(
+				"Set-Cookie",
+				`fatsecret_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${SESSION_TTL_SECONDS}`,
+			);
+
+			// Show connection choice page
+			c.header("Cache-Control", "no-store");
+			return c.html(
+				renderConnectionChoice({
+					clientName: client.clientName,
+					clientId,
+					redirectUri,
+					state,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+				}),
+			);
+		} catch (error) {
+			safeLogError("OAuth2 authorize error", error);
+			return c.html(
+				renderAuthorizePage({
+					clientName: client.clientName,
+					hasSession: false,
+					error: "Failed to connect. Please check your credentials and try again.",
+					clientId,
+					redirectUri,
+					state,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+				}),
+			);
+		}
+	}
+
+	// Handle connect_account — start three-legged OAuth to link existing FatSecret account
+	if (action === "connect_account") {
+		const sessionToken = getSessionCookie(c.req.header("Cookie"));
+		if (!sessionToken) {
+			return c.html(
+				renderAuthorizePage({
+					clientName: client.clientName,
+					hasSession: false,
+					error: "Session expired. Please enter your credentials again.",
+					clientId,
+					redirectUri,
+					state,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+				}),
+			);
+		}
+
+		const session = await getSession(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, sessionToken);
+		if (!session) {
+			return c.html(
+				renderAuthorizePage({
+					clientName: client.clientName,
+					hasSession: false,
+					error: "Session expired. Please enter your credentials again.",
+					clientId,
+					redirectUri,
+					state,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+				}),
+			);
+		}
+
+		try {
+			const fsClient = new FatSecretClient({
+				clientId: session.clientId,
+				clientSecret: session.clientSecret,
+				consumerSecret: session.consumerSecret,
+			});
+
+			const origin = new URL(c.req.url).origin;
+			const callbackUrl = `${origin}/oauth/callback`;
+
+			// Get FatSecret request token
+			const tokenResponse = await fsClient.getRequestToken(callbackUrl);
+
+			// Store OAuth state with OAuth 2.0 context so the callback can complete the flow
+			const fsState = generateSessionToken();
+			const oauthState: OAuthState = {
+				sessionToken,
+				requestToken: tokenResponse.oauth_token,
+				requestTokenSecret: tokenResponse.oauth_token_secret,
+				createdAt: Date.now(),
+				oauth2: {
+					clientId,
+					redirectUri,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+					state,
+				},
+			};
+
+			await storeOAuthState(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, fsState, oauthState);
+
+			// Store state in cookie so the callback can find it
+			c.header(
+				"Set-Cookie",
+				`oauth_state=${fsState}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${OAUTH_STATE_TTL_SECONDS}`,
+			);
+
+			// Redirect to FatSecret authorization page
+			const authUrl = fsClient.getAuthorizationUrl(tokenResponse.oauth_token);
+			return c.redirect(authUrl);
+		} catch (error) {
+			safeLogError("OAuth2 connect_account error", error);
+			return c.html(
+				renderConnectionChoice({
+					clientName: client.clientName,
+					error: "Failed to start FatSecret login. Please try again.",
+					clientId,
+					redirectUri,
+					state,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+				}),
+			);
+		}
+	}
+
+	// Handle create_profile — create a blank FatSecret profile (no login required)
+	if (action === "create_profile") {
+		const sessionToken = getSessionCookie(c.req.header("Cookie"));
+		if (!sessionToken) {
+			return c.html(
+				renderAuthorizePage({
+					clientName: client.clientName,
+					hasSession: false,
+					error: "Session expired. Please enter your credentials again.",
+					clientId,
+					redirectUri,
+					state,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+				}),
+			);
+		}
+
+		const session = await getSession(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, sessionToken);
+		if (!session) {
+			return c.html(
+				renderAuthorizePage({
+					clientName: client.clientName,
+					hasSession: false,
+					error: "Session expired. Please enter your credentials again.",
+					clientId,
+					redirectUri,
+					state,
+					codeChallenge,
+					codeChallengeMethod,
+					scope,
+				}),
+			);
+		}
+
+		try {
+			const fsClient = new FatSecretClient({
+				clientId: session.clientId,
+				clientSecret: session.clientSecret,
+				consumerSecret: session.consumerSecret,
+			});
+
+			// Create profile via Profile API
+			const profileId = `mcp-${crypto.randomUUID()}`;
+			const profileAuth = await fsClient.profileCreate(profileId);
+
+			// Update session with profile tokens
+			const sessionData: SessionData = {
+				...session,
 				profileId,
 				accessToken: profileAuth.authToken,
 				accessTokenSecret: profileAuth.authSecret,
-				createdAt: Date.now(),
 			};
 
 			await storeSession(
@@ -492,23 +682,16 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 				createdAt: Date.now(),
 			});
 
-			// Set session cookie for future use
-			c.header(
-				"Set-Cookie",
-				`fatsecret_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${SESSION_TTL_SECONDS}`,
-			);
-
 			const callbackUrl = new URL(redirectUri);
 			callbackUrl.searchParams.set("code", code);
 			if (state) callbackUrl.searchParams.set("state", state);
 			return c.redirect(callbackUrl.toString());
 		} catch (error) {
-			safeLogError("OAuth2 authorize error", error);
+			safeLogError("OAuth2 create_profile error", error);
 			return c.html(
-				renderAuthorizePage({
+				renderConnectionChoice({
 					clientName: client.clientName,
-					hasSession: false,
-					error: "Failed to connect. Please check your credentials and try again.",
+					error: "Failed to create profile. Please try again.",
 					clientId,
 					redirectUri,
 					state,
@@ -529,32 +712,29 @@ oauth2Routes.post("/oauth2/authorize", async (c) => {
 
 /**
  * POST /oauth2/token
- * Exchange authorization code for access token (with PKCE verification)
+ * Exchange authorization code or refresh token for access token
  */
 oauth2Routes.post("/oauth2/token", async (c) => {
 	const body = await c.req.parseBody();
 	const grantType = body.grant_type as string;
-	const code = body.code as string;
-	const redirectUri = body.redirect_uri as string;
 	const clientId = body.client_id as string;
 	const clientSecret = body.client_secret as string;
-	const codeVerifier = body.code_verifier as string;
 
-	if (grantType !== "authorization_code") {
+	if (grantType !== "authorization_code" && grantType !== "refresh_token") {
 		return c.json(
 			{
 				error: "unsupported_grant_type",
-				error_description: "Only authorization_code is supported",
+				error_description: "Supported grant types: authorization_code, refresh_token",
 			},
 			400,
 		);
 	}
 
-	if (!code || !clientId || !clientSecret || !codeVerifier) {
+	if (!clientId || !clientSecret) {
 		return c.json(
 			{
 				error: "invalid_request",
-				error_description: "Missing required parameters",
+				error_description: "Missing client_id or client_secret",
 			},
 			400,
 		);
@@ -577,6 +757,91 @@ oauth2Routes.post("/oauth2/token", async (c) => {
 				error_description: "Invalid client credentials",
 			},
 			401,
+		);
+	}
+
+	c.header("Cache-Control", "no-store");
+	c.header("Pragma", "no-cache");
+
+	// --- Handle refresh_token grant ---
+	if (grantType === "refresh_token") {
+		const refreshTokenValue = body.refresh_token as string;
+		if (!refreshTokenValue) {
+			return c.json(
+				{ error: "invalid_request", error_description: "Missing refresh_token" },
+				400,
+			);
+		}
+
+		const tokenData = await getRefreshToken(
+			c.env.OAUTH_KV,
+			c.env.COOKIE_ENCRYPTION_KEY,
+			refreshTokenValue,
+		);
+		if (!tokenData) {
+			return c.json(
+				{ error: "invalid_grant", error_description: "Refresh token is invalid or expired" },
+				400,
+			);
+		}
+
+		if (tokenData.clientId !== clientId) {
+			return c.json(
+				{ error: "invalid_grant", error_description: "Client mismatch" },
+				400,
+			);
+		}
+
+		// Verify the session still exists
+		const session = await getSession(
+			c.env.OAUTH_KV,
+			c.env.COOKIE_ENCRYPTION_KEY,
+			tokenData.sessionToken,
+		);
+		if (!session) {
+			return c.json(
+				{ error: "invalid_grant", error_description: "Session expired" },
+				400,
+			);
+		}
+
+		// Refresh the session TTL so it doesn't expire while the refresh token is valid
+		await storeSession(
+			c.env.OAUTH_KV,
+			c.env.COOKIE_ENCRYPTION_KEY,
+			tokenData.sessionToken,
+			session,
+		);
+
+		// Issue a new refresh token (rotation)
+		const newRefreshToken = generateSessionToken();
+		await storeRefreshToken(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, newRefreshToken, {
+			clientId,
+			sessionToken: tokenData.sessionToken,
+			scope: tokenData.scope,
+			createdAt: Date.now(),
+		});
+
+		return c.json({
+			access_token: tokenData.sessionToken,
+			token_type: "bearer",
+			scope: tokenData.scope,
+			refresh_token: newRefreshToken,
+		});
+	}
+
+	// --- Handle authorization_code grant ---
+	const code = body.code as string;
+	const redirectUri = body.redirect_uri as string;
+	const codeVerifier = body.code_verifier as string;
+
+	if (!code || !codeVerifier) {
+		return c.json(
+			{
+				error: "invalid_request",
+				error_description: "Missing required parameters: code, code_verifier",
+			},
+			400,
 		);
 	}
 
@@ -609,13 +874,20 @@ oauth2Routes.post("/oauth2/token", async (c) => {
 		);
 	}
 
-	// The session token IS the access token
-	c.header("Cache-Control", "no-store");
-	c.header("Pragma", "no-cache");
+	// Issue refresh token alongside the access token
+	const refreshToken = generateSessionToken();
+	await storeRefreshToken(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, refreshToken, {
+		clientId,
+		sessionToken: codeData.sessionToken,
+		scope: codeData.scope,
+		createdAt: Date.now(),
+	});
+
 	return c.json({
 		access_token: codeData.sessionToken,
 		token_type: "bearer",
 		scope: codeData.scope,
+		refresh_token: refreshToken,
 	});
 });
 

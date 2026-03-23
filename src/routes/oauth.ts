@@ -24,6 +24,7 @@ import {
 	renderOAuthSuccess,
 	renderOAuthError,
 } from "../views/oauth-callback.js";
+import { storeAuthorizationCode } from "../lib/oauth2-storage.js";
 import type { SessionData, OAuthState } from "../lib/schemas.js";
 import type { AppEnv } from "../app.js";
 import {
@@ -37,6 +38,7 @@ interface TokenExchangeResult {
 	sessionToken: string;
 	sessionData: SessionData;
 	userId?: string;
+	oauth2?: OAuthState["oauth2"];
 }
 
 async function exchangeOAuthTokens(
@@ -80,6 +82,7 @@ async function exchangeOAuthTokens(
 		sessionToken: oauthState.sessionToken,
 		sessionData,
 		userId: accessTokenResponse.user_id,
+		oauth2: oauthState.oauth2,
 	};
 }
 
@@ -349,6 +352,25 @@ oauthRoutes.get("/oauth/callback", async (c) => {
 
 		// Clear the oauth_state cookie now that it's been consumed
 		c.header("Set-Cookie", "oauth_state=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0");
+
+		// If this callback originated from the OAuth 2.0 authorize flow (Claude connection),
+		// issue an authorization code and redirect back to Claude
+		if (result.oauth2) {
+			const code = generateSessionToken();
+			await storeAuthorizationCode(c.env.OAUTH_KV, c.env.COOKIE_ENCRYPTION_KEY, code, {
+				clientId: result.oauth2.clientId,
+				redirectUri: result.oauth2.redirectUri,
+				codeChallenge: result.oauth2.codeChallenge,
+				sessionToken: result.sessionToken,
+				scope: result.oauth2.scope,
+				createdAt: Date.now(),
+			});
+
+			const callbackUrl = new URL(result.oauth2.redirectUri);
+			callbackUrl.searchParams.set("code", code);
+			if (result.oauth2.state) callbackUrl.searchParams.set("state", result.oauth2.state);
+			return c.redirect(callbackUrl.toString());
+		}
 
 		// Check if this came from the cookie-based flow (redirect to setup page)
 		const isWebFlow = c.req.header("Cookie")?.includes("fatsecret_session=");

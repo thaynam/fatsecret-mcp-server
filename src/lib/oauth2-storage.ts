@@ -7,8 +7,12 @@
 
 import { encryptData, decryptData, kvKeyHash } from "./token-storage.js";
 import { safeLogError } from "./errors.js";
-import type { OAuth2ClientData, AuthorizationCodeData } from "./oauth2-types.js";
-import { OAUTH2_CLIENT_TTL_SECONDS, OAUTH2_CODE_TTL_SECONDS } from "./constants.js";
+import type { OAuth2ClientData, AuthorizationCodeData, RefreshTokenData } from "./oauth2-types.js";
+import {
+	OAUTH2_CLIENT_TTL_SECONDS,
+	OAUTH2_CODE_TTL_SECONDS,
+	OAUTH2_REFRESH_TOKEN_TTL_SECONDS,
+} from "./constants.js";
 
 /**
  * Store a registered OAuth 2.0 client in KV (encrypted)
@@ -78,6 +82,44 @@ export async function getAuthorizationCode(
 		return data;
 	} catch (error) {
 		safeLogError("Failed to decrypt authorization code", error);
+		return null;
+	}
+}
+
+/**
+ * Store a refresh token in KV (encrypted, 1-year TTL)
+ */
+export async function storeRefreshToken(
+	kv: KVNamespace,
+	encryptionKey: string,
+	refreshToken: string,
+	data: RefreshTokenData,
+): Promise<void> {
+	const encrypted = await encryptData(JSON.stringify(data), encryptionKey);
+	await kv.put(`oauth2_refresh:${await kvKeyHash(refreshToken)}`, encrypted, {
+		expirationTtl: OAUTH2_REFRESH_TOKEN_TTL_SECONDS,
+	});
+}
+
+/**
+ * Retrieve a refresh token from KV (decrypted) and delete it (single-use / rotation)
+ */
+export async function getRefreshToken(
+	kv: KVNamespace,
+	encryptionKey: string,
+	refreshToken: string,
+): Promise<RefreshTokenData | null> {
+	const kvKey = `oauth2_refresh:${await kvKeyHash(refreshToken)}`;
+	const encrypted = await kv.get(kvKey);
+	if (!encrypted) return null;
+	try {
+		const decrypted = await decryptData(encrypted, encryptionKey);
+		const data = JSON.parse(decrypted) as RefreshTokenData;
+		// Single-use: delete old token (rotation — a new one will be issued)
+		await kv.delete(kvKey);
+		return data;
+	} catch (error) {
+		safeLogError("Failed to decrypt refresh token", error);
 		return null;
 	}
 }

@@ -24,3 +24,11 @@ export interface AuthorizationCodeData {
 	scope: string;
 	createdAt: number;
 }
+
+/** Data stored alongside a refresh token */
+export interface RefreshTokenData {
+	clientId: string;
+	sessionToken: string;
+	scope: string;
+	createdAt: number;
+}

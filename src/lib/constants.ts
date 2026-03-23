@@ -7,6 +7,7 @@ export const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 export const OAUTH_STATE_TTL_SECONDS = 10 * 60; // 10 minutes
 export const OAUTH2_CLIENT_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
 export const OAUTH2_CODE_TTL_SECONDS = 10 * 60; // 10 minutes
+export const OAUTH2_REFRESH_TOKEN_TTL_SECONDS = 365 * 24 * 60 * 60; // 1 year
 export const OAUTH2_TOKEN_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
 
 // Input validation limits

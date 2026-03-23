@@ -37,4 +37,13 @@ export interface OAuthState {
 	requestToken: string;
 	requestTokenSecret: string;
 	createdAt: number;
+	// OAuth 2.0 context — present when three-legged OAuth is initiated from the OAuth 2.0 authorize flow
+	oauth2?: {
+		clientId: string;
+		redirectUri: string;
+		codeChallenge: string;
+		codeChallengeMethod: string;
+		scope: string;
+		state: string;
+	};
 }
