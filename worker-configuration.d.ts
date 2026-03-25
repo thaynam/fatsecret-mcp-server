@@ -12,4 +12,11 @@ interface Env {
 
 	// Encryption key for AES-GCM (64-char hex string = 256 bits)
 	COOKIE_ENCRYPTION_KEY: string;
+
+	// Shared FatSecret developer credentials (optional).
+	// When set, clients can pass ?use_shared_credentials=true to /oauth2/authorize
+	// to skip the credential form — athletes only see the FatSecret login.
+	DEFAULT_FS_CLIENT_ID?: string;
+	DEFAULT_FS_CLIENT_SECRET?: string;
+	DEFAULT_FS_CONSUMER_SECRET?: string;
 }

@@ -297,6 +297,62 @@ oauth2Routes.get("/oauth2/authorize", async (c) => {
 
 	const hasSession = !!(session?.clientId && session?.accessToken);
 
+	// Shared credentials mode: when a trusted client (e.g. FitCrew) passes
+	// ?use_shared_credentials=true and the server has DEFAULT_FS_* env vars set,
+	// create a session using those credentials and skip the credential form.
+	// The athlete only sees the "Sign in to FatSecret" connection choice page.
+	const useShared = c.req.query("use_shared_credentials") === "true";
+	if (useShared && !hasSession) {
+		const defaultClientId = c.env.DEFAULT_FS_CLIENT_ID;
+		const defaultClientSecret = c.env.DEFAULT_FS_CLIENT_SECRET;
+		const defaultConsumerSecret = c.env.DEFAULT_FS_CONSUMER_SECRET;
+
+		if (defaultClientId && defaultClientSecret && defaultConsumerSecret) {
+			try {
+				const fsClient = new FatSecretClient({
+					clientId: defaultClientId,
+					clientSecret: defaultClientSecret,
+					consumerSecret: defaultConsumerSecret,
+				});
+				const valid = await fsClient.validateCredentials();
+				if (valid) {
+					const newSessionToken = generateSessionToken();
+					const sessionData: SessionData = {
+						clientId: defaultClientId,
+						clientSecret: defaultClientSecret,
+						consumerSecret: defaultConsumerSecret,
+						createdAt: Date.now(),
+					};
+					await storeSession(
+						c.env.OAUTH_KV,
+						c.env.COOKIE_ENCRYPTION_KEY,
+						newSessionToken,
+						sessionData,
+					);
+					c.header(
+						"Set-Cookie",
+						`fatsecret_session=${newSessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${SESSION_TTL_SECONDS}`,
+					);
+					c.header("Cache-Control", "no-store");
+					return c.html(
+						renderConnectionChoice({
+							clientName: client.clientName,
+							clientId: client_id,
+							redirectUri: redirect_uri,
+							state,
+							codeChallenge: code_challenge,
+							codeChallengeMethod: code_challenge_method || "S256",
+							scope: scope || "mcp",
+						}),
+					);
+				}
+			} catch (error) {
+				safeLogError("Shared credentials validation failed", error);
+				// Fall through to normal authorize page
+			}
+		}
+	}
+
 	c.header("Cache-Control", "no-store");
 	return c.html(
 		renderAuthorizePage({

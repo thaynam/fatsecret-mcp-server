@@ -56,5 +56,12 @@
 	/**
 	 * Secrets (configure via wrangler secret put):
 	 * - COOKIE_ENCRYPTION_KEY: 64-char hex string for AES-GCM encryption
+	 * - DEFAULT_FS_CLIENT_ID: (optional) shared FatSecret developer Client ID
+	 * - DEFAULT_FS_CLIENT_SECRET: (optional) shared FatSecret developer Client Secret
+	 * - DEFAULT_FS_CONSUMER_SECRET: (optional) shared FatSecret developer Consumer Secret
+	 *
+	 * When all three DEFAULT_FS_* secrets are set, clients can pass
+	 * ?use_shared_credentials=true to /oauth2/authorize to skip the
+	 * credential form. Athletes only see the FatSecret login step.
 	 */
 }
